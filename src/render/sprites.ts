@@ -65,7 +65,7 @@ export const ANIMATIONS: Readonly<Record<AnimationId, AnimationDef>> = {
   // them: an idle breathes slowly, a run cycles over roughly twice a second.
   [Animation.Idle]: { frames: 25, frameTime: 0.09 },
   [Animation.Walk]: { frames: 25, frameTime: 0.045 },
-  [Animation.Run]: { frames: 25, frameTime: 0.03 },
+  [Animation.Run]: { frames: 25, frameTime: 0.05 },
 }
 
 /** Directions per sheet row. Frames per row vary by animation — see ANIMATIONS. */

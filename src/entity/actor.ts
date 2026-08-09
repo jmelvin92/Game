@@ -34,7 +34,7 @@ export function createActor(x: number, y: number): Actor {
     // Tuned for how it feels rather than for realism. A literal 1.4 m/s walk is
     // correct and miserable to play; these are one-line changes if they feel wrong.
     walkSpeed: 3.4,
-    runSpeed: 6.6,
+    runSpeed: 5.0,
     radius: 0.28,
     moving: false,
     running: false,
