@@ -18,7 +18,14 @@ export interface Grid {
 
   /** The wall on the given boundary of this tile. See `walls.ts` for the sides. */
   wallAt(x: number, y: number, side: WallSideId): WallId
-  setWall(x: number, y: number, side: WallSideId, id: WallId, style?: number): void
+  setWall(
+    x: number,
+    y: number,
+    side: WallSideId,
+    id: WallId,
+    style?: number,
+    segments?: number,
+  ): void
 
   /**
    * Which material a wall is made of.
@@ -28,6 +35,15 @@ export interface Grid {
    * building from a timber one, and so that saving the map preserves it.
    */
   wallStyleAt(x: number, y: number, side: WallSideId): number
+
+  /**
+   * How many wall segments high this boundary stands.
+   *
+   * The art draws a segment roughly a metre tall, not a whole storey, so a
+   * building is several stacked. This is what makes a wall taller than the person
+   * standing next to it.
+   */
+  wallSegmentsAt(x: number, y: number, side: WallSideId): number
 
   /** Which building occupies this tile; 0 outdoors. Identifies interiors. */
   buildingAt(x: number, y: number): number
@@ -49,6 +65,7 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
   // boundary exists exactly once, so there is no pair of values to keep in step.
   const wallKind = [new Uint8Array(area), new Uint8Array(area)]
   const wallStyle = [new Uint8Array(area), new Uint8Array(area)]
+  const wallSegments = [new Uint8Array(area), new Uint8Array(area)]
 
   const buildings = new Uint16Array(area)
   const roofs = new Uint8Array(area)
@@ -76,15 +93,22 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
       return (wallKind[side]?.[y * width + x] ?? Wall.None) as WallId
     },
 
-    setWall(x: number, y: number, side: WallSideId, id: WallId, style = 0): void {
+    setWall(x: number, y: number, side: WallSideId, id: WallId, style = 0, segments = 1): void {
       if (!contains(x, y)) return
 
       const index = y * width + x
       const kinds = wallKind[side]
       const styles = wallStyle[side]
+      const heights = wallSegments[side]
 
       if (kinds !== undefined) kinds[index] = id
       if (styles !== undefined) styles[index] = style
+      if (heights !== undefined) heights[index] = segments
+    },
+
+    wallSegmentsAt(x: number, y: number, side: WallSideId): number {
+      if (!contains(x, y)) return 0
+      return wallSegments[side]?.[y * width + x] ?? 0
     },
 
     wallStyleAt(x: number, y: number, side: WallSideId): number {

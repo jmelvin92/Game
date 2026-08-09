@@ -27,6 +27,18 @@ export interface Archetype {
   readonly roofStyle: number
   /** How many steps the roof climbs before flattening off. 0 is a flat roof. */
   readonly roofRise: number
+  /**
+   * Height of the walls in stacked segments.
+   *
+   * How many courses of wall art are stacked. Note this is not a storey count:
+   * the plain wall art is about a metre per segment, while the facade art already
+   * depicts two or three storeys in a single tile. Stacking facades as though they
+   * were a metre each produced thirty-storey towers on a residential street.
+   *
+   * These are set by eye against the character, who is 118px tall against a 64px
+   * segment — so three courses puts a house at roughly twice his height.
+   */
+  readonly segments: number
   readonly floor: TileId
   /** Smallest a subdivided room may get. Large values mean open-plan. */
   readonly minRoom: number
@@ -60,6 +72,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     wallStyle: WallStyle.Wood,
     roofStyle: 1,
     roofRise: 4,
+    segments: 3,
     floor: Tile.Floorboards,
     minRoom: 3,
     windows: 0.7,
@@ -72,6 +85,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     wallStyle: WallStyle.Apartment,
     roofStyle: 2,
     roofRise: 3,
+    segments: 2,
     floor: Tile.Floorboards,
     minRoom: 3,
     windows: 0.6,
@@ -84,6 +98,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     wallStyle: WallStyle.Shopfront,
     roofStyle: 3,
     roofRise: 1,
+    segments: 2,
     floor: Tile.Tiles,
     // Shops are one room at the front with a back office, so barely subdivided.
     minRoom: 6,
@@ -97,6 +112,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     wallStyle: WallStyle.GlassTower,
     roofStyle: 4,
     roofRise: 0,
+    segments: 4,
     floor: Tile.Tiles,
     minRoom: 4,
     windows: 0.8,
@@ -109,6 +125,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     wallStyle: WallStyle.Concrete,
     roofStyle: 5,
     roofRise: 2,
+    segments: 2,
     floor: Tile.Concrete,
     // Deliberately larger than any warehouse, so the interior is left open.
     minRoom: 99,
@@ -122,6 +139,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     wallStyle: WallStyle.Industrial,
     roofStyle: 6,
     roofRise: 1,
+    segments: 2,
     floor: Tile.Concrete,
     minRoom: 8,
     windows: 0.2,
@@ -190,6 +208,7 @@ export function placeBuilding(
       WallSide.North,
       door === 'north' && isDoorTile(tx, doorAt) ? Wall.None : glazed ? Wall.Window : Wall.Solid,
       wallStyle,
+      archetype.segments,
     )
     grid.setWall(
       tx,
@@ -201,6 +220,7 @@ export function placeBuilding(
           ? Wall.Window
           : Wall.Solid,
       wallStyle,
+      archetype.segments,
     )
   }
 
@@ -214,6 +234,7 @@ export function placeBuilding(
       WallSide.West,
       door === 'west' && isDoorTile(ty, doorAt) ? Wall.None : glazed ? Wall.Window : Wall.Solid,
       wallStyle,
+      archetype.segments,
     )
     grid.setWall(
       x + w,
@@ -225,6 +246,7 @@ export function placeBuilding(
           ? Wall.Window
           : Wall.Solid,
       wallStyle,
+      archetype.segments,
     )
   }
 
@@ -279,7 +301,14 @@ function subdivide(
 
     for (let ty = y; ty < y + h; ty++) {
       const isDoor = ty === doorAt || ty === doorAt + 1
-      grid.setWall(cut, ty, WallSide.West, isDoor ? Wall.None : Wall.Solid, archetype.wallStyle)
+      grid.setWall(
+        cut,
+        ty,
+        WallSide.West,
+        isDoor ? Wall.None : Wall.Solid,
+        archetype.wallStyle,
+        archetype.segments,
+      )
     }
 
     subdivide(grid, archetype, { x, y, w: cut - x, h }, rng, depth + 1)
@@ -294,7 +323,14 @@ function subdivide(
 
   for (let tx = x; tx < x + w; tx++) {
     const isDoor = tx === doorAt || tx === doorAt + 1
-    grid.setWall(tx, cut, WallSide.North, isDoor ? Wall.None : Wall.Solid, archetype.wallStyle)
+    grid.setWall(
+      tx,
+      cut,
+      WallSide.North,
+      isDoor ? Wall.None : Wall.Solid,
+      archetype.wallStyle,
+      archetype.segments,
+    )
   }
 
   subdivide(grid, archetype, { x, y, w, h: cut - y }, rng, depth + 1)

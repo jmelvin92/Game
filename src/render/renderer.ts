@@ -120,6 +120,25 @@ export function cutawayOpacity(midX: number, midY: number, actorX: number, actor
   return CUTAWAY_MIN_ALPHA + (1 - CUTAWAY_MIN_ALPHA) * t
 }
 
+/**
+ * How tall this building's walls stand, in segments.
+ *
+ * Read from a perimeter wall rather than stored per tile: the roof has to land on
+ * top of the walls, and the walls are the thing that knows how high they are.
+ */
+function wallHeight(grid: Grid, x: number, y: number): number {
+  for (const [tx, ty, side] of [
+    [x, y, WallSide.North],
+    [x, y, WallSide.West],
+    [x, y + 1, WallSide.North],
+    [x + 1, y, WallSide.West],
+  ] as const) {
+    const segments = grid.wallSegmentsAt(tx, ty, side)
+    if (segments > 0) return segments
+  }
+  return 1
+}
+
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -163,24 +182,33 @@ export function renderScene(
 
         // A west wall runs down-left from the tile's top vertex, so it occupies the
         // half-diamond to the left; a north wall runs down-right, occupying the
-        // half to the right. Both stand WALL_H tall from their lowest point.
+        // half to the right.
         const left = side === WallSide.West ? sx - WALL_W : sx
 
         // Midpoint of the boundary the wall sits on, which is what the cutaway
         // measures against — not the tile's centre.
         const midX = side === WallSide.West ? x : x + 0.5
         const midY = side === WallSide.West ? y + 0.5 : y
+        const alpha = cutawayOpacity(midX, midY, actor.x, actor.y)
 
-        standing.push({
-          // Walls sit on a tile's far boundaries, so they draw fractionally before
-          // anything standing in that tile — that is what puts the character
-          // *inside* the room rather than in front of its back wall.
-          sort: depth(x, y) - 0.5,
-          sprite,
-          x: Math.round(ox + left),
-          y: Math.round(oy + sy - WALL_H + TILE_H / 2),
-          alpha: cutawayOpacity(midX, midY, actor.x, actor.y),
-        })
+        // A wall segment is about a metre of height, so a building is several
+        // stacked. Drawing bottom upward means each course overlaps the one below
+        // it, hiding the seam where they meet.
+        const segments = Math.max(1, grid.wallSegmentsAt(x, y, side))
+
+        for (let level = 0; level < segments; level++) {
+          standing.push({
+            // Walls sit on a tile's far boundaries, so they draw fractionally
+            // before anything standing in that tile — that is what puts the
+            // character *inside* the room rather than in front of its back wall.
+            // Higher courses draw after lower ones.
+            sort: depth(x, y) - 0.5 + level * 0.001,
+            sprite,
+            x: Math.round(ox + left),
+            y: Math.round(oy + sy - WALL_H + TILE_H / 2 - level * TILE_Z),
+            alpha,
+          })
+        }
       }
     }
   }
@@ -200,8 +228,9 @@ export function renderScene(
       if (sprite === undefined) continue
 
       const { sx, sy } = worldToScreen(x, y)
-      // Hipped roofs climb toward the ridge, so each tile sits at its own height.
-      const rise = grid.roofHeightAt(x, y) * ROOF_STEP
+      // Roofs cap the walls, so they sit at the building's full wall height, plus
+      // however far this part of the hip has climbed toward the ridge.
+      const rise = grid.roofHeightAt(x, y) * ROOF_STEP + wallHeight(grid, x, y) * TILE_Z
 
       standing.push({
         // A storey above the ground, and drawn after everything at this tile so it
@@ -210,7 +239,7 @@ export function renderScene(
         sort: depth(x, y) + 0.25 + grid.roofHeightAt(x, y) * 0.01,
         sprite,
         x: Math.round(ox + sx - TILE_W / 2),
-        y: Math.round(oy + sy - TILE_Z - rise),
+        y: Math.round(oy + sy - rise),
         alpha: 1,
       })
     }
