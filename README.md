@@ -28,3 +28,4 @@ npm run dev      # http://localhost:5173
 
 Read [`CLAUDE.md`](./CLAUDE.md) first — it covers the architecture rules, where things live, and
 how changes get made. [`CHANGELOG.md`](./CHANGELOG.md) records what changed in each release.
+# protection probe
