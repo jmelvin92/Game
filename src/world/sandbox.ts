@@ -1,116 +1,139 @@
+import { createRng } from '@/core/rng'
+import { archetypesFor, placeBuilding } from '@/world/buildings'
+import { District, districtAt, districtDef, type DistrictId } from '@/world/districts'
 import { createGrid, type Grid } from '@/world/grid'
-import { Tile, type TileId } from '@/world/tiles'
-import { Wall, WallSide } from '@/world/walls'
+import { Tile } from '@/world/tiles'
 
 /**
- * A hand-built city block to walk around in — and into.
+ * Generates the town.
  *
- * Written out explicitly rather than generated. Procedural generation is a real
- * problem worth solving later, but solving it now would mean debugging a generator
- * and a renderer at the same time, with no way to tell which one was wrong. A fixed
- * map is a known-good reference to check the renderer against.
+ * A street grid divides the map into blocks; each block becomes a lot; each lot gets
+ * a building drawn from whatever suits the district it falls in. That ordering is
+ * what gives the place coherence — industry ends up together on the edge, shops
+ * cluster where the roads cross, and houses fill the rest.
+ *
+ * Seeded throughout, so the same seed always produces the same town. Without that a
+ * layout bug seen once could never be looked at again.
  */
 
-export const SANDBOX_SIZE = 64
+export const SANDBOX_SIZE = 128
+export const SANDBOX_SEED = 20260808
 
-/** Where the character starts: the middle of the crossroads. */
+/** Tiles between road centrelines. */
+const BLOCK = 32
+const ROAD_WIDTH = 4
+const PAVEMENT = 2
+
 export const SPAWN = { x: SANDBOX_SIZE / 2 + 0.5, y: SANDBOX_SIZE / 2 + 0.5 } as const
 
-function fill(grid: Grid, x: number, y: number, w: number, h: number, id: TileId): void {
-  for (let ty = y; ty < y + h; ty++) {
-    for (let tx = x; tx < x + w; tx++) {
-      grid.set(tx, ty, id)
+/** True where a road runs, so lots can be kept clear of them. */
+function roadBand(v: number, size: number): boolean {
+  const half = ROAD_WIDTH / 2
+  for (let centre = size / 2; centre < size + BLOCK; centre += BLOCK) {
+    if (Math.abs(v - centre) < half) return true
+  }
+  for (let centre = size / 2 - BLOCK; centre > -BLOCK; centre -= BLOCK) {
+    if (Math.abs(v - centre) < half) return true
+  }
+  return false
+}
+
+function layStreets(grid: Grid, size: number): void {
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const onRoad = roadBand(x, size) || roadBand(y, size)
+      if (onRoad) {
+        grid.set(x, y, Tile.Road)
+        continue
+      }
+
+      const nearRoad =
+        roadBand(x - PAVEMENT, size) ||
+        roadBand(x + PAVEMENT, size) ||
+        roadBand(y - PAVEMENT, size) ||
+        roadBand(y + PAVEMENT, size)
+
+      if (nearRoad) grid.set(x, y, Tile.Sidewalk)
     }
   }
 }
 
-interface Building {
-  readonly x: number
-  readonly y: number
-  readonly w: number
-  readonly h: number
-  /** Which side the doorway is cut into. */
-  readonly door: 'north' | 'south' | 'east' | 'west'
-}
-
-/**
- * A rectangular building: floor throughout, walls around the perimeter, one doorway
- * two tiles wide, and windows spaced along the remaining walls.
- *
- * Note which boundaries are set. The north wall of row `y` is the building's top
- * edge; its bottom edge is the north wall of the row *below* the building, because
- * that boundary is owned by the tile south of it. The same applies west to east.
- * Getting this wrong is the classic edge-wall bug — the building comes out shifted
- * by one tile, or open on two sides.
- */
-function building(grid: Grid, { x, y, w, h, door }: Building): void {
-  fill(grid, x, y, w, h, Tile.Floor)
-
-  const doorA = { x: x + Math.floor(w / 2) - 1, y: y + Math.floor(h / 2) - 1 }
-
-  for (let i = 0; i < w; i++) {
-    const tx = x + i
-    const isDoor = (side: 'north' | 'south'): boolean =>
-      door === side && (tx === doorA.x || tx === doorA.x + 1)
-
-    // Windows every third tile, kept clear of the corners.
-    const windowish = i > 0 && i < w - 1 && i % 3 === 1
-
-    grid.setWall(
-      tx,
-      y,
-      WallSide.North,
-      isDoor('north') ? Wall.None : windowish ? Wall.Window : Wall.Solid,
-    )
-    grid.setWall(
-      tx,
-      y + h,
-      WallSide.North,
-      isDoor('south') ? Wall.None : windowish ? Wall.Window : Wall.Solid,
-    )
-  }
-
-  for (let i = 0; i < h; i++) {
-    const ty = y + i
-    const isDoor = (side: 'west' | 'east'): boolean =>
-      door === side && (ty === doorA.y || ty === doorA.y + 1)
-
-    const windowish = i > 0 && i < h - 1 && i % 3 === 1
-
-    grid.setWall(
-      x,
-      ty,
-      WallSide.West,
-      isDoor('west') ? Wall.None : windowish ? Wall.Window : Wall.Solid,
-    )
-    grid.setWall(
-      x + w,
-      ty,
-      WallSide.West,
-      isDoor('east') ? Wall.None : windowish ? Wall.Window : Wall.Solid,
-    )
-  }
-}
-
-export function createSandbox(): Grid {
+export function createSandbox(seed: number = SANDBOX_SEED): Grid {
   const size = SANDBOX_SIZE
   const grid = createGrid(size, size, Tile.Grass)
+  const rng = createRng(seed)
 
-  // A crossroads through the centre, with sidewalks either side of each road.
-  const roadStart = size / 2 - 2
-  const roadWidth = 4
+  layStreets(grid, size)
 
-  fill(grid, 0, roadStart - 1, size, roadWidth + 2, Tile.Sidewalk)
-  fill(grid, roadStart - 1, 0, roadWidth + 2, size, Tile.Sidewalk)
-  fill(grid, 0, roadStart, size, roadWidth, Tile.Road)
-  fill(grid, roadStart, 0, roadWidth, size, Tile.Road)
+  let nextBuildingId = 1
+  const inset = ROAD_WIDTH / 2 + PAVEMENT + 1
 
-  // One building per quadrant, each with its doorway facing the crossroads so
-  // every interior is reachable on foot.
-  building(grid, { x: 8, y: 8, w: 14, h: 11, door: 'south' })
-  building(grid, { x: 42, y: 6, w: 15, h: 13, door: 'west' })
-  building(grid, { x: 7, y: 41, w: 16, h: 14, door: 'east' })
-  building(grid, { x: 41, y: 43, w: 14, h: 12, door: 'north' })
+  for (let blockY = 0; blockY < size; blockY += BLOCK) {
+    for (let blockX = 0; blockX < size; blockX += BLOCK) {
+      const blockOriginX = blockX + inset
+      const blockOriginY = blockY + inset
+      const blockW = BLOCK - inset * 2
+      const blockH = BLOCK - inset * 2
+
+      if (blockOriginX + blockW >= size || blockOriginY + blockH >= size) continue
+
+      const district = districtAt(blockOriginX + blockW / 2, blockOriginY + blockH / 2, size)
+
+      // How finely a block is carved up is what sets the density of the area, and
+      // density is most of what makes a district feel different on foot. Housing is
+      // several small plots to a block; industry is one yard that takes the lot.
+      const lots = lotsPerBlock(district)
+      const lotW = Math.floor(blockW / lots)
+      const lotH = Math.floor(blockH / lots)
+
+      for (let ly = 0; ly < lots; ly++) {
+        for (let lx = 0; lx < lots; lx++) {
+          const lotX = blockOriginX + lx * lotW
+          const lotY = blockOriginY + ly * lotH
+
+          const candidates = archetypesFor(district)
+          if (candidates.length === 0) continue
+
+          const archetype = rng.pick(candidates)
+          const { lotFill } = districtDef(district)
+
+          // A gap between plots, so neighbouring buildings never share a wall.
+          const maxW = Math.floor(lotW * lotFill) - 1
+          const maxH = Math.floor(lotH * lotFill) - 1
+
+          const w = Math.min(maxW, rng.int(archetype.minSize, archetype.maxSize))
+          const h = Math.min(maxH, rng.int(archetype.minSize, archetype.maxSize))
+
+          if (w < 5 || h < 5) continue
+
+          // Sit the building somewhere in its plot rather than centred, so a street
+          // does not read as a row of identically spaced boxes.
+          const x = lotX + rng.int(0, Math.max(0, lotW - w - 1))
+          const y = lotY + rng.int(0, Math.max(0, lotH - h - 1))
+
+          // Leave the spawn point clear, so the character never starts in a wall.
+          const coversSpawn =
+            SPAWN.x >= x - 1 && SPAWN.x <= x + w + 1 && SPAWN.y >= y - 1 && SPAWN.y <= y + h + 1
+          if (coversSpawn) continue
+
+          placeBuilding(grid, archetype, { x, y, w, h }, nextBuildingId, rng)
+          nextBuildingId += 1
+        }
+      }
+    }
+  }
 
   return grid
+}
+
+/** How many plots a block is divided into along each axis. */
+function lotsPerBlock(district: DistrictId): number {
+  switch (district) {
+    case District.Residential:
+      return 2
+    case District.Commercial:
+      return 2
+    case District.Industrial:
+      return 1
+  }
 }

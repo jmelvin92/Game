@@ -41,16 +41,35 @@ export const PERSON_ANCHOR = { x: PERSON_W / 2, y: 50 * PERSON_SCALE } as const
 export interface Sprites {
   /** Ground tiles, indexed by tile id. */
   readonly ground: ReadonlyMap<TileId, HTMLCanvasElement>
-  /** Wall segments, keyed by `${wallId}:${side}`. */
+  /** Wall segments, keyed by {@link wallSpriteKey}. */
   readonly walls: ReadonlyMap<string, HTMLCanvasElement>
+  /** Roof tiles, indexed by roof style. */
+  readonly roofs: readonly HTMLCanvasElement[]
   /** The character, indexed by facing (see {@link facingIndex}). */
   readonly person: readonly HTMLCanvasElement[]
 }
 
 /** Key for {@link Sprites.walls}. */
-export function wallSpriteKey(wall: WallId, side: WallSideId): string {
-  return `${String(wall)}:${String(side)}`
+export function wallSpriteKey(wall: WallId, side: WallSideId, style: number): string {
+  return `${String(wall)}:${String(side)}:${String(style)}`
 }
+
+/**
+ * Roof colours, indexed by the style number an archetype carries.
+ *
+ * Index 0 is unused — a tile with roof style 0 has open sky above it. The rest are
+ * deliberately distinct so a district reads at a glance from above: warm tiles over
+ * housing, flat grey and green over commerce and industry.
+ */
+const ROOF_COLOURS: readonly string[] = [
+  '#000000',
+  '#8a4b3a',
+  '#a2503f',
+  '#4d5a68',
+  '#5c6675',
+  '#4a5750',
+  '#6b6152',
+]
 
 interface Palette {
   readonly base: string
@@ -62,7 +81,9 @@ const GROUND_PALETTES: ReadonlyMap<TileId, Palette> = new Map([
   [Tile.Grass, { base: '#4c7a42', edge: '#41693a', speck: '#5d8f4f' }],
   [Tile.Road, { base: '#3c3c42', edge: '#34343a' }],
   [Tile.Sidewalk, { base: '#8d8d88', edge: '#7c7c78' }],
-  [Tile.Floor, { base: '#7a6248', edge: '#6b553e' }],
+  [Tile.Floorboards, { base: '#7a6248', edge: '#6b553e' }],
+  [Tile.Tiles, { base: '#8f8f8a', edge: '#7d7d79' }],
+  [Tile.Concrete, { base: '#6e6e6b', edge: '#5f5f5d' }],
 ])
 
 const WALL_TOP = '#b9ab95'
@@ -155,6 +176,31 @@ function drawEdgeWall(side: WallSideId, opening: boolean): HTMLCanvasElement {
     ctx.fillRect(WALL_W * 0.25, WALL_H * 0.35, WALL_W * 0.5, WALL_H * 0.25)
     ctx.globalCompositeOperation = 'source-over'
   }
+
+  return element
+}
+
+/**
+ * A roof tile: one flat diamond sitting a storey above the ground.
+ *
+ * Drawn in code rather than textured, because a roof only needs to read as a solid
+ * mass of the right colour from above — and doing it this way makes each archetype's
+ * roof a one-line change while the shape of the town is still being worked out.
+ */
+function drawRoof(colour: string): HTMLCanvasElement {
+  const [element, ctx] = canvas(TILE_W, TILE_H)
+
+  diamondPath(ctx, 0)
+
+  ctx.fillStyle = colour
+  ctx.fill()
+
+  // A very faint seam. Enough that a large roof reads as a surface with panels
+  // rather than a flat shape cut out of the world, but not so much that the tile
+  // grid becomes the thing you notice.
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
+  ctx.lineWidth = 1
+  ctx.stroke()
 
   return element
 }
@@ -297,7 +343,9 @@ const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
   // the road uses the darkest grey available. Real road surfaces are in the Town pack.
   [Tile.Road, { sheet: 'stones', index: 10 }],
   [Tile.Sidewalk, { sheet: 'tile', index: 2 }],
-  [Tile.Floor, { sheet: 'wood', index: 0 }],
+  [Tile.Floorboards, { sheet: 'wood', index: 0 }],
+  [Tile.Tiles, { sheet: 'tile', index: 7 }],
+  [Tile.Concrete, { sheet: 'stone', index: 15 }],
 ])
 
 /**
@@ -315,23 +363,33 @@ export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
     ground.set(id, textured ?? drawGroundTile(palette))
   }
 
-  // Walls: one sprite per (kind, side). The art ships a separate render for each
-  // facing rather than a mirror, because the brick coursing and lighting differ.
+  // Walls: one sprite per (kind, side, material). The art ships a separate render
+  // for each facing rather than a mirror, because the coursing and lighting differ.
   const walls = new Map<string, HTMLCanvasElement>()
 
-  const wallSources: readonly (readonly [WallId, string])[] = [
-    [Wall.Solid, 'wall'],
-    [Wall.Window, 'wall-window'],
+  const materials = ['brick', 'stone', 'wood'] as const
+  const kinds: readonly (readonly [WallId, string])[] = [
+    [Wall.Solid, ''],
+    [Wall.Window, '-window'],
   ]
 
-  for (const [id, prefix] of wallSources) {
-    for (const side of [WallSide.West, WallSide.North] as const) {
-      const sheetName = `${prefix}-${side === WallSide.West ? 'se' : 'sw'}`
-      const textured = sheets.get(sheetName)?.tiles[wallTextureIndex(side)]
+  materials.forEach((material, style) => {
+    for (const [id, suffix] of kinds) {
+      for (const side of [WallSide.West, WallSide.North] as const) {
+        const facing = side === WallSide.West ? 'se' : 'sw'
+        const textured = sheets.get(`wall-${material}${suffix}-${facing}`)?.tiles[
+          wallTextureIndex(side)
+        ]
 
-      walls.set(wallSpriteKey(id, side), textured ?? drawEdgeWall(side, id === Wall.Window))
+        walls.set(
+          wallSpriteKey(id, side, style),
+          textured ?? drawEdgeWall(side, id === Wall.Window),
+        )
+      }
     }
-  }
+  })
+
+  const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))
 
   const person: HTMLCanvasElement[] = []
   const step = (Math.PI * 2) / FACINGS
@@ -340,5 +398,5 @@ export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
     person.push(drawPerson(Math.cos(angle), Math.sin(angle)))
   }
 
-  return { ground, walls, person }
+  return { ground, walls, roofs, person }
 }

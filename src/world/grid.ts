@@ -1,12 +1,12 @@
 import { Tile, type TileId } from '@/world/tiles'
-import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
+import { Wall, type WallId, type WallSideId } from '@/world/walls'
 
 /**
- * A fixed-size map: ground tiles, plus walls on tile boundaries.
+ * A fixed-size map: ground tiles, walls on tile boundaries, and the buildings those
+ * walls enclose.
  *
  * Deliberately not chunked yet. Chunking exists to stop map size being bounded by
- * memory, which is not a problem a sandbox has, and adding it now would mean writing
- * streaming logic against a renderer that has barely drawn anything.
+ * memory, which is not a problem a sandbox has.
  */
 export interface Grid {
   readonly width: number
@@ -18,16 +18,38 @@ export interface Grid {
 
   /** The wall on the given boundary of this tile. See `walls.ts` for the sides. */
   wallAt(x: number, y: number, side: WallSideId): WallId
-  setWall(x: number, y: number, side: WallSideId, id: WallId): void
+  setWall(x: number, y: number, side: WallSideId, id: WallId, style?: number): void
+
+  /**
+   * Which material a wall is made of.
+   *
+   * The simulation never interprets this — a wall's behaviour comes entirely from
+   * its {@link WallId}. It is carried here only so the renderer can tell a brick
+   * building from a timber one, and so that saving the map preserves it.
+   */
+  wallStyleAt(x: number, y: number, side: WallSideId): number
+
+  /** Which building occupies this tile; 0 outdoors. Identifies interiors. */
+  buildingAt(x: number, y: number): number
+  setBuilding(x: number, y: number, id: number): void
+
+  /** The roof over this tile; 0 for open sky. */
+  roofAt(x: number, y: number): number
+  setRoof(x: number, y: number, style: number): void
 }
 
 export function createGrid(width: number, height: number, fill: TileId): Grid {
-  const tiles = new Uint8Array(width * height).fill(fill)
+  const area = width * height
+
+  const tiles = new Uint8Array(area).fill(fill)
 
   // One array per side. Storing both on the tile that owns them means every
   // boundary exists exactly once, so there is no pair of values to keep in step.
-  const westWalls = new Uint8Array(width * height)
-  const northWalls = new Uint8Array(width * height)
+  const wallKind = [new Uint8Array(area), new Uint8Array(area)]
+  const wallStyle = [new Uint8Array(area), new Uint8Array(area)]
+
+  const buildings = new Uint16Array(area)
+  const roofs = new Uint8Array(area)
 
   const contains = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < width && y < height
 
@@ -48,16 +70,43 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
 
     wallAt(x: number, y: number, side: WallSideId): WallId {
       if (!contains(x, y)) return Wall.None
-
-      const store = side === WallSide.West ? westWalls : northWalls
-      return (store[y * width + x] ?? Wall.None) as WallId
+      return (wallKind[side]?.[y * width + x] ?? Wall.None) as WallId
     },
 
-    setWall(x: number, y: number, side: WallSideId, id: WallId): void {
+    setWall(x: number, y: number, side: WallSideId, id: WallId, style = 0): void {
       if (!contains(x, y)) return
 
-      const store = side === WallSide.West ? westWalls : northWalls
-      store[y * width + x] = id
+      const index = y * width + x
+      const kinds = wallKind[side]
+      const styles = wallStyle[side]
+
+      if (kinds !== undefined) kinds[index] = id
+      if (styles !== undefined) styles[index] = style
+    },
+
+    wallStyleAt(x: number, y: number, side: WallSideId): number {
+      if (!contains(x, y)) return 0
+      return wallStyle[side]?.[y * width + x] ?? 0
+    },
+
+    buildingAt(x: number, y: number): number {
+      if (!contains(x, y)) return 0
+      return buildings[y * width + x] ?? 0
+    },
+
+    setBuilding(x: number, y: number, id: number): void {
+      if (!contains(x, y)) return
+      buildings[y * width + x] = id
+    },
+
+    roofAt(x: number, y: number): number {
+      if (!contains(x, y)) return 0
+      return roofs[y * width + x] ?? 0
+    },
+
+    setRoof(x: number, y: number, style: number): void {
+      if (!contains(x, y)) return
+      roofs[y * width + x] = style
     },
   }
 }

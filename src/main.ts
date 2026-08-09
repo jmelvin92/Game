@@ -81,10 +81,18 @@ const [groundSheets, wallSheets] = await Promise.all([
   // different grid to the ground.
   loadTileSheets(
     {
-      'wall-se': '/tiles/wall-se.png',
-      'wall-sw': '/tiles/wall-sw.png',
-      'wall-window-se': '/tiles/wall-window-se.png',
-      'wall-window-sw': '/tiles/wall-window-sw.png',
+      'wall-brick-se': '/tiles/wall-brick-se.png',
+      'wall-brick-sw': '/tiles/wall-brick-sw.png',
+      'wall-brick-window-se': '/tiles/wall-brick-window-se.png',
+      'wall-brick-window-sw': '/tiles/wall-brick-window-sw.png',
+      'wall-stone-se': '/tiles/wall-stone-se.png',
+      'wall-stone-sw': '/tiles/wall-stone-sw.png',
+      'wall-stone-window-se': '/tiles/wall-stone-window-se.png',
+      'wall-stone-window-sw': '/tiles/wall-stone-window-sw.png',
+      'wall-wood-se': '/tiles/wall-wood-se.png',
+      'wall-wood-sw': '/tiles/wall-wood-sw.png',
+      'wall-wood-window-se': '/tiles/wall-wood-window-se.png',
+      'wall-wood-window-sw': '/tiles/wall-wood-window-sw.png',
     },
     WALL_W,
     WALL_H,

@@ -1,6 +1,6 @@
 import type { Actor } from '@/entity/actor'
 import { cameraOffset, type Camera } from '@/render/camera'
-import { depth, screenToWorld, TILE_H, TILE_W, worldToScreen } from '@/render/iso'
+import { depth, screenToWorld, TILE_H, TILE_W, TILE_Z, worldToScreen } from '@/render/iso'
 import {
   facingIndex,
   PERSON_ANCHOR,
@@ -153,7 +153,7 @@ export function renderScene(
         const wall = grid.wallAt(x, y, side)
         if (wall === Wall.None) continue
 
-        const sprite = sprites.walls.get(wallSpriteKey(wall, side))
+        const sprite = sprites.walls.get(wallSpriteKey(wall, side, grid.wallStyleAt(x, y, side)))
         if (sprite === undefined) continue
 
         // A west wall runs down-left from the tile's top vertex, so it occupies the
@@ -177,6 +177,34 @@ export function renderScene(
           alpha: cutawayOpacity(midX, midY, actor.x, actor.y),
         })
       }
+    }
+  }
+
+  // The roof comes off the building you are standing in, and stays on every other.
+  // Fading it instead would still leave the interior unreadable, and a building
+  // whose roof is simply absent reads clearly as the one you are inside.
+  const occupied = grid.buildingAt(Math.floor(actor.x), Math.floor(actor.y))
+
+  for (let y = bounds.minY; y <= bounds.maxY; y++) {
+    for (let x = bounds.minX; x <= bounds.maxX; x++) {
+      const style = grid.roofAt(x, y)
+      if (style === 0) continue
+      if (occupied !== 0 && grid.buildingAt(x, y) === occupied) continue
+
+      const sprite = sprites.roofs[style]
+      if (sprite === undefined) continue
+
+      const { sx, sy } = worldToScreen(x, y)
+
+      standing.push({
+        // A storey above the ground, and drawn after everything at this tile so it
+        // covers the walls it sits on.
+        sort: depth(x, y) + 0.25,
+        sprite,
+        x: Math.round(ox + sx - TILE_W / 2),
+        y: Math.round(oy + sy - TILE_Z),
+        alpha: 1,
+      })
     }
   }
 

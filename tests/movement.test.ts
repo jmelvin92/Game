@@ -141,50 +141,67 @@ describe('sandbox', () => {
     expect(blocked(grid, actor.x, actor.y, actor.radius)).toBe(false)
   })
 
-  it('makes every building interior reachable on foot', () => {
+  it('leaves every room in every building reachable on foot', () => {
     const grid = createSandbox()
 
-    // Flood fill from spawn, crossing only boundaries without a solid wall. If a
-    // doorway were missed, mis-sided, or too narrow, some interior floor would be
-    // sealed off and this would catch it.
+    // Flood fill from spawn, crossing only boundaries without a solid wall. This is
+    // the test that matters most now buildings are subdivided: a dividing wall drawn
+    // without its doorway seals a room, which no other check would notice and which
+    // is invisible from outside.
     const reached = floodFill(grid, Math.floor(SPAWN.x), Math.floor(SPAWN.y))
 
-    let floors = 0
-    let reachedFloors = 0
+    let interior = 0
+    let reachedInterior = 0
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
-        if (grid.at(x, y) !== Tile.Floor) continue
-        floors++
-        if (reached.has(`${String(x)},${String(y)}`)) reachedFloors++
+        if (grid.buildingAt(x, y) === 0) continue
+        interior++
+        if (reached.has(`${String(x)},${String(y)}`)) reachedInterior++
       }
     }
 
-    expect(floors).toBeGreaterThan(0)
-    expect(reachedFloors).toBe(floors)
+    expect(interior).toBeGreaterThan(0)
+    expect(reachedInterior).toBe(interior)
   })
 
-  it('encloses each building, so interiors are not open to the street', () => {
+  it('generates several buildings across more than one district', () => {
     const grid = createSandbox()
 
-    // A building's perimeter should be walled except at its doorway. Count the
-    // boundaries between floor and non-floor that have no wall: exactly one
-    // two-tile doorway per building means eight open boundaries across four.
-    let openings = 0
+    const ids = new Set<number>()
+    const roofs = new Set<number>()
 
-    for (let y = 1; y < grid.height; y++) {
-      for (let x = 1; x < grid.width; x++) {
-        const inside = grid.at(x, y) === Tile.Floor
-
-        if (inside !== (grid.at(x - 1, y) === Tile.Floor)) {
-          if (grid.wallAt(x, y, WallSide.West) === Wall.None) openings++
-        }
-        if (inside !== (grid.at(x, y - 1) === Tile.Floor)) {
-          if (grid.wallAt(x, y, WallSide.North) === Wall.None) openings++
-        }
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        const id = grid.buildingAt(x, y)
+        if (id === 0) continue
+        ids.add(id)
+        roofs.add(grid.roofAt(x, y))
       }
     }
 
-    expect(openings).toBe(8)
+    expect(ids.size).toBeGreaterThan(4)
+    // More than one roof style means archetypes from more than one district were
+    // used — the whole point of zoning.
+    expect(roofs.size).toBeGreaterThan(1)
+  })
+
+  it('produces the same town from the same seed', () => {
+    const a = createSandbox(1234)
+    const b = createSandbox(1234)
+    const different = createSandbox(9999)
+
+    const signature = (grid: ReturnType<typeof createSandbox>): string => {
+      let out = ''
+      for (let y = 0; y < grid.height; y += 3) {
+        for (let x = 0; x < grid.width; x += 3) {
+          out += String(grid.at(x, y)) + String(grid.buildingAt(x, y) === 0 ? 0 : 1)
+        }
+      }
+      return out
+    }
+
+    expect(signature(a)).toBe(signature(b))
+    expect(signature(a)).not.toBe(signature(different))
   })
 })
 

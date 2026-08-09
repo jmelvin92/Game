@@ -1,0 +1,275 @@
+import type { Rng } from '@/core/rng'
+import { District, type DistrictId } from '@/world/districts'
+import type { Grid } from '@/world/grid'
+import { Tile, type TileId } from '@/world/tiles'
+import { Wall, WallSide } from '@/world/walls'
+
+/**
+ * Building archetypes and how one gets stamped onto the map.
+ *
+ * Each archetype is a kind of building with its own proportions, material and
+ * interior habits — a house is small, timber, and chopped into several rooms; a
+ * warehouse is large, windowless and mostly one open space. Giving them distinct
+ * rules is what stops a town looking like the same box repeated.
+ *
+ * Archetypes are theme, not engine. The simulation only ever sees floors, walls and
+ * doorways; nothing downstream knows what a "warehouse" is.
+ */
+
+export interface Archetype {
+  readonly name: string
+  readonly district: DistrictId
+  /** Footprint bounds in tiles, before the lot is taken into account. */
+  readonly minSize: number
+  readonly maxSize: number
+  /** Which wall art to use. Interpreted only by the renderer. */
+  readonly wallStyle: number
+  readonly roofStyle: number
+  readonly floor: TileId
+  /** Smallest a subdivided room may get. Large values mean open-plan. */
+  readonly minRoom: number
+  /** Proportion of exterior wall runs that get windows. */
+  readonly windows: number
+}
+
+/**
+ * Wall styles map to art in `render/sprites.ts`; roof styles to colours there too.
+ * They are plain numbers here because `world/` must not know what brick looks like.
+ */
+export const WallStyle = { Brick: 0, Stone: 1, Wood: 2 } as const
+
+export const ARCHETYPES: readonly Archetype[] = [
+  {
+    name: 'house',
+    district: District.Residential,
+    minSize: 7,
+    maxSize: 11,
+    wallStyle: WallStyle.Wood,
+    roofStyle: 1,
+    floor: Tile.Floorboards,
+    minRoom: 3,
+    windows: 0.7,
+  },
+  {
+    name: 'townhouse',
+    district: District.Residential,
+    minSize: 8,
+    maxSize: 12,
+    wallStyle: WallStyle.Brick,
+    roofStyle: 2,
+    floor: Tile.Floorboards,
+    minRoom: 3,
+    windows: 0.6,
+  },
+  {
+    name: 'shop',
+    district: District.Commercial,
+    minSize: 9,
+    maxSize: 14,
+    wallStyle: WallStyle.Brick,
+    roofStyle: 3,
+    floor: Tile.Tiles,
+    // Shops are one room at the front with a back office, so barely subdivided.
+    minRoom: 6,
+    windows: 0.85,
+  },
+  {
+    name: 'office',
+    district: District.Commercial,
+    minSize: 11,
+    maxSize: 16,
+    wallStyle: WallStyle.Stone,
+    roofStyle: 4,
+    floor: Tile.Tiles,
+    minRoom: 4,
+    windows: 0.8,
+  },
+  {
+    name: 'warehouse',
+    district: District.Industrial,
+    minSize: 13,
+    maxSize: 20,
+    wallStyle: WallStyle.Stone,
+    roofStyle: 5,
+    floor: Tile.Concrete,
+    // Deliberately larger than any warehouse, so the interior is left open.
+    minRoom: 99,
+    windows: 0.12,
+  },
+  {
+    name: 'depot',
+    district: District.Industrial,
+    minSize: 10,
+    maxSize: 15,
+    wallStyle: WallStyle.Brick,
+    roofStyle: 6,
+    floor: Tile.Concrete,
+    minRoom: 8,
+    windows: 0.2,
+  },
+]
+
+export function archetypesFor(district: DistrictId): readonly Archetype[] {
+  return ARCHETYPES.filter((a) => a.district === district)
+}
+
+export interface Footprint {
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+}
+
+/**
+ * Stamps a building onto the grid: floor, perimeter walls with a doorway and
+ * windows, interior rooms joined by internal doorways, and a roof.
+ *
+ * Note which boundaries the perimeter uses. A building spanning rows `y` to
+ * `y + h - 1` is closed at the top by the north wall of row `y`, and at the bottom
+ * by the north wall of row `y + h` — the row *below* it — because that boundary is
+ * owned by the tile south of it. Same west to east. Getting this wrong is the
+ * classic edge-wall bug: the building comes out shifted a tile, or open on two sides.
+ */
+export function placeBuilding(
+  grid: Grid,
+  archetype: Archetype,
+  { x, y, w, h }: Footprint,
+  id: number,
+  rng: Rng,
+): void {
+  for (let ty = y; ty < y + h; ty++) {
+    for (let tx = x; tx < x + w; tx++) {
+      grid.set(tx, ty, archetype.floor)
+      grid.setBuilding(tx, ty, id)
+      grid.setRoof(tx, ty, archetype.roofStyle)
+    }
+  }
+
+  const { wallStyle } = archetype
+
+  // The doorway faces the street: whichever side of the building is nearest the
+  // map centre, since that is where the roads run.
+  const door = doorSide(grid, { x, y, w, h })
+  const doorAt =
+    door === 'north' || door === 'south' ? x + Math.floor(w / 2) : y + Math.floor(h / 2)
+
+  for (let i = 0; i < w; i++) {
+    const tx = x + i
+    const glazed = i > 0 && i < w - 1 && rng.chance(archetype.windows)
+
+    grid.setWall(
+      tx,
+      y,
+      WallSide.North,
+      door === 'north' && isDoorTile(tx, doorAt) ? Wall.None : glazed ? Wall.Window : Wall.Solid,
+      wallStyle,
+    )
+    grid.setWall(
+      tx,
+      y + h,
+      WallSide.North,
+      door === 'south' && isDoorTile(tx, doorAt)
+        ? Wall.None
+        : rng.chance(archetype.windows)
+          ? Wall.Window
+          : Wall.Solid,
+      wallStyle,
+    )
+  }
+
+  for (let i = 0; i < h; i++) {
+    const ty = y + i
+    const glazed = i > 0 && i < h - 1 && rng.chance(archetype.windows)
+
+    grid.setWall(
+      x,
+      ty,
+      WallSide.West,
+      door === 'west' && isDoorTile(ty, doorAt) ? Wall.None : glazed ? Wall.Window : Wall.Solid,
+      wallStyle,
+    )
+    grid.setWall(
+      x + w,
+      ty,
+      WallSide.West,
+      door === 'east' && isDoorTile(ty, doorAt)
+        ? Wall.None
+        : rng.chance(archetype.windows)
+          ? Wall.Window
+          : Wall.Solid,
+      wallStyle,
+    )
+  }
+
+  subdivide(grid, archetype, { x, y, w, h }, rng, 0)
+}
+
+/** Doorways are two tiles wide, so they can be walked through without catching. */
+function isDoorTile(position: number, doorStart: number): boolean {
+  return position === doorStart || position === doorStart + 1
+}
+
+function doorSide(grid: Grid, { x, y, w, h }: Footprint): 'north' | 'south' | 'east' | 'west' {
+  const centre = grid.width / 2
+  const dx = x + w / 2 - centre
+  const dy = y + h / 2 - centre
+
+  // Face the road: the dominant axis decides which way the front of the building
+  // looks, and the sign decides which end.
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'west' : 'east'
+  return dy > 0 ? 'north' : 'south'
+}
+
+/**
+ * Splits the interior into rooms by recursive bisection, with a doorway through
+ * each dividing wall.
+ *
+ * Every wall it adds gets a gap, so no room can be sealed off — which matters more
+ * than the layout being clever. A house you cannot walk through is worse than a
+ * plain one.
+ */
+function subdivide(
+  grid: Grid,
+  archetype: Archetype,
+  { x, y, w, h }: Footprint,
+  rng: Rng,
+  depth: number,
+): void {
+  const { minRoom } = archetype
+
+  // Stop when either a further split would make a room too small, or the recursion
+  // has gone deep enough that rooms would be poky regardless.
+  if (depth >= 3) return
+  if (w < minRoom * 2 + 1 && h < minRoom * 2 + 1) return
+
+  const splitVertically = h < minRoom * 2 + 1 ? true : w < minRoom * 2 + 1 ? false : w >= h
+
+  if (splitVertically) {
+    if (w < minRoom * 2 + 1) return
+
+    const cut = x + rng.int(minRoom, w - minRoom - 1)
+    const doorAt = y + rng.int(0, h - 2)
+
+    for (let ty = y; ty < y + h; ty++) {
+      const isDoor = ty === doorAt || ty === doorAt + 1
+      grid.setWall(cut, ty, WallSide.West, isDoor ? Wall.None : Wall.Solid, archetype.wallStyle)
+    }
+
+    subdivide(grid, archetype, { x, y, w: cut - x, h }, rng, depth + 1)
+    subdivide(grid, archetype, { x: cut, y, w: x + w - cut, h }, rng, depth + 1)
+    return
+  }
+
+  if (h < minRoom * 2 + 1) return
+
+  const cut = y + rng.int(minRoom, h - minRoom - 1)
+  const doorAt = x + rng.int(0, w - 2)
+
+  for (let tx = x; tx < x + w; tx++) {
+    const isDoor = tx === doorAt || tx === doorAt + 1
+    grid.setWall(tx, cut, WallSide.North, isDoor ? Wall.None : Wall.Solid, archetype.wallStyle)
+  }
+
+  subdivide(grid, archetype, { x, y, w, h: cut - y }, rng, depth + 1)
+  subdivide(grid, archetype, { x, y: cut, w, h: y + h - cut }, rng, depth + 1)
+}
