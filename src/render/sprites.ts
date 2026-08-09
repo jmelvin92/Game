@@ -1,6 +1,7 @@
 import { TILE_H, TILE_W } from '@/render/iso'
 import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
+import { Prop, PROP_VARIANTS, type PropId } from '@/world/props'
 import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
 
 /**
@@ -99,9 +100,8 @@ export interface Sprites {
   readonly walls: ReadonlyMap<string, HTMLCanvasElement>
   /** Roof tiles, indexed by roof style. */
   readonly roofs: readonly HTMLCanvasElement[]
-  /** Vegetation, indexed by variant. */
-  readonly trees: readonly HTMLCanvasElement[]
-  readonly bushes: readonly HTMLCanvasElement[]
+  /** Vegetation: species, then variant. */
+  readonly props: ReadonlyMap<PropId, readonly HTMLCanvasElement[]>
   /** The character: animation → facing (see {@link facingIndex}) → frame. */
   readonly character: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
 }
@@ -342,145 +342,313 @@ function drawAsphalt(variant: number): HTMLCanvasElement {
   return element
 }
 
-/** How tall a tree sprite stands, and where its trunk meets the ground. */
-export const TREE_W = 116
-export const TREE_H = 168
-export const TREE_ANCHOR = { x: TREE_W / 2, y: TREE_H - 6 } as const
-
-export const BUSH_W = 78
-export const BUSH_H = 62
-export const BUSH_ANCHOR = { x: BUSH_W / 2, y: BUSH_H - 4 } as const
+/**
+ * Every prop is drawn into the same frame with the same anchor, whatever its
+ * species. A sagebrush simply occupies the bottom of it. One size means the
+ * renderer needs no per-species offsets and nothing can be anchored wrongly.
+ */
+export const PROP_W = 116
+export const PROP_H = 168
+export const PROP_ANCHOR = { x: PROP_W / 2, y: PROP_H - 6 } as const
 
 /**
- * A tree, drawn from overlapping blobs of foliage.
+ * Vegetation, drawn rather than sourced.
  *
- * Deliberately not a single silhouette: real canopies read as clumps catching the
- * light separately, and a flat blob looks like a lollipop. Light is taken as coming
- * from the upper left, matching the wall art, so the lit side is consistent with
- * the buildings around it.
+ * The palette is deliberately drained — olive, khaki, grey-green, dust — and never
+ * a saturated green. A healthy green canopy reads as parkland, and this is not
+ * meant to be parkland. Light comes from the upper left to match the wall art.
  */
-function drawTree(variant: number): HTMLCanvasElement {
-  const [element, ctx] = canvas(TREE_W, TREE_H)
-
-  let seed = 0x2545f491 ^ Math.imul(variant + 1, 0x9e3779b9)
-  const random = (): number => {
+function seededRandom(salt: number): () => number {
+  let seed = 0x2545f491 ^ Math.imul(salt + 1, 0x9e3779b9)
+  return () => {
     seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
     return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
   }
+}
 
-  const cx = TREE_ANCHOR.x
-  const groundY = TREE_ANCHOR.y
-
-  // Contact shadow, or the tree appears to hover.
+function groundShadow(ctx: CanvasRenderingContext2D, radiusX: number, alpha: number): void {
   ctx.beginPath()
-  ctx.ellipse(cx, groundY, 26, 11, 0, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.30)'
+  ctx.ellipse(PROP_ANCHOR.x, PROP_ANCHOR.y, radiusX, radiusX * 0.42, 0, 0, Math.PI * 2)
+  ctx.fillStyle = `rgba(0, 0, 0, ${String(alpha)})`
   ctx.fill()
+}
 
-  // Trunk, tapering and leaning slightly so no two trees stand identically.
-  const lean = (random() - 0.5) * 10
+/** A tapering trunk, leaning slightly so no two stand identically. */
+function trunk(
+  ctx: CanvasRenderingContext2D,
+  height: number,
+  lean: number,
+  width: number,
+  colour: string,
+  shadeColour: string,
+): void {
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
   ctx.beginPath()
-  ctx.moveTo(cx - 7, groundY)
-  ctx.lineTo(cx + 7, groundY)
-  ctx.lineTo(cx + 4 + lean, groundY - 62)
-  ctx.lineTo(cx - 4 + lean, groundY - 62)
+  ctx.moveTo(cx - width, groundY)
+  ctx.lineTo(cx + width, groundY)
+  ctx.lineTo(cx + width * 0.55 + lean, groundY - height)
+  ctx.lineTo(cx - width * 0.55 + lean, groundY - height)
   ctx.closePath()
-  ctx.fillStyle = '#4a3a2b'
+  ctx.fillStyle = colour
   ctx.fill()
+
   ctx.beginPath()
-  ctx.moveTo(cx + 1, groundY)
-  ctx.lineTo(cx + 7, groundY)
-  ctx.lineTo(cx + 4 + lean, groundY - 62)
-  ctx.lineTo(cx + 1 + lean, groundY - 62)
+  ctx.moveTo(cx, groundY)
+  ctx.lineTo(cx + width, groundY)
+  ctx.lineTo(cx + width * 0.55 + lean, groundY - height)
+  ctx.lineTo(cx + lean, groundY - height)
   ctx.closePath()
-  ctx.fillStyle = '#3a2d21'
+  ctx.fillStyle = shadeColour
   ctx.fill()
+}
 
-  // Canopy: a handful of clumps around a centre above the trunk.
-  const canopyY = groundY - 96 + random() * 10
-  const spread = 30 + random() * 8
+/** Bare branching, used by the dead trees and under the willows. */
+function branches(
+  ctx: CanvasRenderingContext2D,
+  fromX: number,
+  fromY: number,
+  angle: number,
+  length: number,
+  depth: number,
+  random: () => number,
+  colour: string,
+): void {
+  if (depth === 0 || length < 5) return
 
-  const clumps: { x: number; y: number; r: number }[] = []
-  for (let i = 0; i < 7; i++) {
-    const angle = (i / 7) * Math.PI * 2 + random() * 0.7
-    const distance = spread * (0.35 + random() * 0.65)
-    clumps.push({
-      x: cx + lean + Math.cos(angle) * distance,
-      y: canopyY + Math.sin(angle) * distance * 0.62,
-      r: 21 + random() * 13,
-    })
+  const toX = fromX + Math.cos(angle) * length
+  const toY = fromY + Math.sin(angle) * length
+
+  ctx.beginPath()
+  ctx.moveTo(fromX, fromY)
+  ctx.lineTo(toX, toY)
+  ctx.strokeStyle = colour
+  ctx.lineWidth = Math.max(1, depth * 1.4)
+  ctx.lineCap = 'round'
+  ctx.stroke()
+
+  const spread = 0.45 + random() * 0.5
+  branches(
+    ctx,
+    toX,
+    toY,
+    angle - spread,
+    length * (0.62 + random() * 0.16),
+    depth - 1,
+    random,
+    colour,
+  )
+  branches(
+    ctx,
+    toX,
+    toY,
+    angle + spread,
+    length * (0.62 + random() * 0.16),
+    depth - 1,
+    random,
+    colour,
+  )
+  if (random() > 0.55) {
+    branches(
+      ctx,
+      toX,
+      toY,
+      angle + (random() - 0.5) * 0.4,
+      length * 0.55,
+      depth - 1,
+      random,
+      colour,
+    )
   }
-  clumps.push({ x: cx + lean, y: canopyY, r: 32 + random() * 6 })
+}
 
-  const hue = 96 + Math.floor(random() * 26)
-  const dark = `hsl(${String(hue)}, 34%, 19%)`
-  const mid = `hsl(${String(hue)}, 32%, 27%)`
-  const light = `hsl(${String(hue - 6)}, 36%, 37%)`
+function drawDeadTree(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 7 + 1)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
 
-  for (const c of clumps) {
+  groundShadow(ctx, 18, 0.24)
+
+  const height = 62 + random() * 22
+  const lean = (random() - 0.5) * 12
+  trunk(ctx, height, lean, 6, '#4b453c', '#3a352e')
+
+  // No canopy at all — the silhouette is the whole point of a dead tree.
+  branches(
+    ctx,
+    cx + lean,
+    groundY - height,
+    -Math.PI / 2 + (random() - 0.5) * 0.3,
+    30 + random() * 12,
+    4,
+    random,
+    '#4b453c',
+  )
+
+  return element
+}
+
+function drawWillow(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 13 + 5)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 26, 0.26)
+
+  const height = 54 + random() * 14
+  const lean = (random() - 0.5) * 8
+  trunk(ctx, height, lean, 7, '#463c31', '#382f27')
+
+  // Fronds hanging from a high crown, drawn as tapering strokes rather than
+  // blobs: the drooping line is what makes a willow legible at this size.
+  const crownX = cx + lean
+  const crownY = groundY - height - 6
+  const hue = 68 + random() * 14
+
+  for (let i = 0; i < 26; i++) {
+    const spread = (random() - 0.5) * 74
+    const drop = 34 + random() * 46
     ctx.beginPath()
-    ctx.ellipse(c.x, c.y, c.r, c.r * 0.82, 0, 0, Math.PI * 2)
-    ctx.fillStyle = dark
-    ctx.fill()
+    ctx.moveTo(crownX + spread * 0.35, crownY)
+    ctx.quadraticCurveTo(crownX + spread * 0.8, crownY + drop * 0.4, crownX + spread, crownY + drop)
+    ctx.strokeStyle = `hsl(${String(hue)}, ${String(14 + random() * 10)}%, ${String(22 + random() * 12)}%)`
+    ctx.lineWidth = 1 + random() * 1.6
+    ctx.stroke()
   }
-  for (const c of clumps) {
+
+  return element
+}
+
+function drawPine(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 17 + 3)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 20, 0.28)
+
+  const height = 92 + random() * 30
+  trunk(ctx, height * 0.34, 0, 5, '#3d332a', '#2f281f')
+
+  // Stacked tiers, widest at the base, each slightly darker below.
+  const hue = 96 + random() * 16
+  const tiers = 5
+  for (let i = 0; i < tiers; i++) {
+    const t = i / (tiers - 1)
+    const y = groundY - height * (0.28 + t * 0.66)
+    const halfWidth = 34 * (1 - t * 0.72) + 4
+
     ctx.beginPath()
-    ctx.ellipse(c.x - 2, c.y - 3, c.r * 0.84, c.r * 0.68, 0, 0, Math.PI * 2)
-    ctx.fillStyle = mid
-    ctx.fill()
-  }
-  for (const c of clumps) {
-    ctx.beginPath()
-    ctx.ellipse(c.x - c.r * 0.28, c.y - c.r * 0.34, c.r * 0.44, c.r * 0.36, 0, 0, Math.PI * 2)
-    ctx.fillStyle = light
+    ctx.moveTo(cx, y - 26)
+    ctx.lineTo(cx + halfWidth, y + 8)
+    ctx.lineTo(cx - halfWidth, y + 8)
+    ctx.closePath()
+    ctx.fillStyle = `hsl(${String(hue)}, ${String(16 + t * 6)}%, ${String(13 + t * 7)}%)`
     ctx.fill()
   }
 
   return element
 }
 
-/** A bush: the same idea, lower and without a trunk. */
-function drawBush(variant: number): HTMLCanvasElement {
-  const [element, ctx] = canvas(BUSH_W, BUSH_H)
+function drawTree(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 23 + 11)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
 
-  let seed = 0x85ebca6b ^ Math.imul(variant + 1, 0x27d4eb2d)
-  const random = (): number => {
-    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
-    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
-  }
+  groundShadow(ctx, 24, 0.26)
 
-  const cx = BUSH_ANCHOR.x
-  const groundY = BUSH_ANCHOR.y
+  const height = 58 + random() * 18
+  const lean = (random() - 0.5) * 10
+  trunk(ctx, height, lean, 6, '#483e33', '#3a3229')
 
-  ctx.beginPath()
-  ctx.ellipse(cx, groundY, 20, 8, 0, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.26)'
-  ctx.fill()
-
-  const hue = 92 + Math.floor(random() * 30)
+  // Sparse canopy: clumps with gaps between them, so the branches show through
+  // and it reads as thinning rather than lush.
+  const canopyY = groundY - height - 22 + random() * 8
+  const hue = 62 + random() * 22
   const clumps: { x: number; y: number; r: number }[] = []
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 + random() * 0.8
+    const distance = 26 * (0.4 + random() * 0.6)
     clumps.push({
-      x: cx + (random() - 0.5) * 34,
-      y: groundY - 14 - random() * 12,
-      r: 14 + random() * 8,
+      x: cx + lean + Math.cos(angle) * distance,
+      y: canopyY + Math.sin(angle) * distance * 0.6,
+      r: 15 + random() * 11,
     })
   }
 
   for (const c of clumps) {
     ctx.beginPath()
-    ctx.ellipse(c.x, c.y, c.r, c.r * 0.8, 0, 0, Math.PI * 2)
-    ctx.fillStyle = `hsl(${String(hue)}, 32%, 21%)`
+    ctx.ellipse(c.x, c.y, c.r, c.r * 0.78, 0, 0, Math.PI * 2)
+    ctx.fillStyle = `hsl(${String(hue)}, 16%, 17%)`
     ctx.fill()
   }
   for (const c of clumps) {
     ctx.beginPath()
-    ctx.ellipse(c.x - c.r * 0.24, c.y - c.r * 0.3, c.r * 0.55, c.r * 0.44, 0, 0, Math.PI * 2)
-    ctx.fillStyle = `hsl(${String(hue - 5)}, 35%, 33%)`
+    ctx.ellipse(c.x - c.r * 0.24, c.y - c.r * 0.3, c.r * 0.6, c.r * 0.48, 0, 0, Math.PI * 2)
+    ctx.fillStyle = `hsl(${String(hue - 4)}, 18%, 26%)`
     ctx.fill()
   }
 
   return element
+}
+
+function drawSagebrush(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 31 + 7)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 15, 0.2)
+
+  // Spindly grey-green stems fanning from a common base, not a rounded bush.
+  for (let i = 0; i < 16; i++) {
+    const angle = -Math.PI / 2 + (random() - 0.5) * 1.9
+    const length = 12 + random() * 20
+    ctx.beginPath()
+    ctx.moveTo(cx + (random() - 0.5) * 10, groundY)
+    ctx.lineTo(cx + Math.cos(angle) * length * 1.4, groundY + Math.sin(angle) * length)
+    ctx.strokeStyle = `hsl(${String(72 + random() * 16)}, ${String(10 + random() * 8)}%, ${String(30 + random() * 14)}%)`
+    ctx.lineWidth = 1 + random()
+    ctx.stroke()
+  }
+
+  return element
+}
+
+function drawScrub(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 37 + 13)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 17, 0.2)
+
+  const hue = 48 + random() * 20
+  for (let i = 0; i < 4; i++) {
+    const x = cx + (random() - 0.5) * 30
+    const y = groundY - 8 - random() * 8
+    const r = 10 + random() * 7
+    ctx.beginPath()
+    ctx.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2)
+    ctx.fillStyle = `hsl(${String(hue)}, ${String(14 + random() * 8)}%, ${String(20 + random() * 10)}%)`
+    ctx.fill()
+  }
+
+  return element
+}
+
+const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElement>> = {
+  [Prop.None]: drawScrub,
+  [Prop.DeadTree]: drawDeadTree,
+  [Prop.Willow]: drawWillow,
+  [Prop.Pine]: drawPine,
+  [Prop.Tree]: drawTree,
+  [Prop.Sagebrush]: drawSagebrush,
+  [Prop.Scrub]: drawScrub,
 }
 
 const SKIN = '#d7a67c'
@@ -763,8 +931,15 @@ export function buildSprites(
   })
 
   const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))
-  const trees = [0, 1, 2, 3, 4].map(drawTree)
-  const bushes = [0, 1, 2].map(drawBush)
+  const props = new Map<PropId, readonly HTMLCanvasElement[]>()
+  for (const [id, paint] of Object.entries(PROP_PAINTERS)) {
+    const species = Number(id) as PropId
+    if (species === Prop.None) continue
+    props.set(
+      species,
+      Array.from({ length: PROP_VARIANTS }, (_, variant) => paint(variant)),
+    )
+  }
 
   // One set of frames per animation per facing. Placeholder art, generated to the
   // same shape real sprite sheets arrive in, so swapping them is a change of source
@@ -808,5 +983,5 @@ export function buildSprites(
     character.set(id, byFacing)
   }
 
-  return { ground, walls, roofs, trees, bushes, character }
+  return { ground, walls, roofs, props, character }
 }

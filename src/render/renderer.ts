@@ -4,10 +4,9 @@ import { depth, screenToWorld, TILE_H, TILE_W, TILE_Z, worldToScreen } from '@/r
 import {
   Animation,
   ANIMATIONS,
-  BUSH_ANCHOR,
   facingIndex,
   ROOF_STEP,
-  TREE_ANCHOR,
+  PROP_ANCHOR,
   WALL_H,
   WALL_W,
   wallSpriteKey,
@@ -240,21 +239,20 @@ export function renderScene(
       const prop = grid.propAt(x, y)
       if (prop === Prop.None) continue
 
-      const variant = grid.propVariantAt(x, y)
-      const isTree = prop === Prop.Tree
-      const sprite = isTree ? sprites.trees[variant] : sprites.bushes[variant]
+      const variants = sprites.props.get(prop)
+      const sprite = variants?.[grid.propVariantAt(x, y) % Math.max(1, variants.length)]
       if (sprite === undefined) continue
 
-      const anchor = isTree ? TREE_ANCHOR : BUSH_ANCHOR
       // Anchored at the middle of the tile rather than its corner, so the trunk
-      // sits where the collision circle is.
+      // sits where the collision circle is. Every species shares one frame size,
+      // so there is no per-species offset to get wrong.
       const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
 
       standing.push({
         sort: depth(x, y),
         sprite,
-        x: Math.round(ox + sx - anchor.x),
-        y: Math.round(oy + sy - anchor.y),
+        x: Math.round(ox + sx - PROP_ANCHOR.x),
+        y: Math.round(oy + sy - PROP_ANCHOR.y),
         alpha: 1,
       })
     }

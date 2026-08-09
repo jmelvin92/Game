@@ -2,7 +2,7 @@ import { createRng, type Rng } from '@/core/rng'
 import { archetypesFor, placeBuilding } from '@/world/buildings'
 import { District, districtAt, districtDef, type DistrictId } from '@/world/districts'
 import { createGrid, type Grid } from '@/world/grid'
-import { Prop } from '@/world/props'
+import { Prop, PROP_VARIANTS } from '@/world/props'
 import { Tile } from '@/world/tiles'
 
 /**
@@ -129,9 +129,21 @@ export function createSandbox(seed: number = SANDBOX_SEED): Grid {
   return grid
 }
 
-/** Tree variants the renderer can draw; picked per tree so a wood is not one clone. */
-const TREE_VARIANTS = 5
-const BUSH_VARIANTS = 3
+/**
+ * Which species appear, and how often. Repeats weight the roll: dead trees come
+ * up three times as often as anything still living, which is what gives the
+ * woodland its character rather than any individual sprite.
+ */
+const CANOPY = [
+  Prop.DeadTree,
+  Prop.DeadTree,
+  Prop.DeadTree,
+  Prop.Pine,
+  Prop.Willow,
+  Prop.Tree,
+] as const
+
+const GROUND_COVER = [Prop.Sagebrush, Prop.Sagebrush, Prop.Scrub] as const
 
 /**
  * Scatters trees and undergrowth over open ground.
@@ -191,10 +203,13 @@ function scatterVegetation(grid: Grid, rng: Rng): void {
 
       const density = densityAt(x, y)
 
-      if (rng.next() < density * 0.34) {
-        grid.setProp(x, y, Prop.Tree, rng.int(0, TREE_VARIANTS - 1))
-      } else if (rng.next() < density * 0.3) {
-        grid.setProp(x, y, Prop.Bush, rng.int(0, BUSH_VARIANTS - 1))
+      // Sparse, and weighted toward the bare and the half-dead. Standing timber
+      // is the exception rather than the rule; low dry growth is what fills the
+      // gaps between.
+      if (rng.next() < density * 0.1) {
+        grid.setProp(x, y, rng.pick(CANOPY), rng.int(0, PROP_VARIANTS - 1))
+      } else if (rng.next() < density * 0.22) {
+        grid.setProp(x, y, rng.pick(GROUND_COVER), rng.int(0, PROP_VARIANTS - 1))
       }
     }
   }
