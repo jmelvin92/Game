@@ -89,8 +89,12 @@ export const CHARACTER_SCALE = 1
 export const SHEET_ROW_FOR_FACING: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 7]
 
 export interface Sprites {
-  /** Ground tiles, indexed by tile id. */
-  readonly ground: ReadonlyMap<TileId, HTMLCanvasElement>
+  /**
+   * Ground tiles, indexed by tile id. Several variants per surface: a field of
+   * one repeated tile reads as wallpaper no matter how good the texture is, and
+   * that was doing more damage to the look of the world than the textures were.
+   */
+  readonly ground: ReadonlyMap<TileId, readonly HTMLCanvasElement[]>
   /** Wall segments, keyed by {@link wallSpriteKey}. */
   readonly walls: ReadonlyMap<string, HTMLCanvasElement>
   /** Roof tiles, indexed by roof style. */
@@ -284,6 +288,57 @@ function shade(hex: string, amount: number): string {
   return `rgb(${String(channel(16))}, ${String(channel(8))}, ${String(channel(0))})`
 }
 
+/**
+ * Asphalt, drawn rather than sourced.
+ *
+ * Neither the floor nor the overworld pack contains a road surface — both lean
+ * natural and fantasy — and substituting gravel or cobble read as a garden path,
+ * while mixing several stone tiles for variety turned the roads into confetti.
+ *
+ * Speckle is seeded from the variant index, so the variants differ from each other
+ * but each is identical every time it is drawn.
+ */
+function drawAsphalt(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(TILE_W, TILE_H)
+
+  diamondPath(ctx, 0)
+  ctx.save()
+  ctx.clip()
+
+  ctx.fillStyle = '#41434a'
+  ctx.fillRect(0, 0, TILE_W, TILE_H)
+
+  // Aggregate: fine light and dark grit, which is most of what reads as tarmac.
+  let seed = 0x9e3779b9 ^ Math.imul(variant + 1, 0x85ebca6b)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+
+  for (let i = 0; i < 340; i++) {
+    const x = random() * TILE_W
+    const y = random() * TILE_H
+    const light = random()
+    ctx.fillStyle =
+      light > 0.72
+        ? 'rgba(180, 182, 190, 0.30)'
+        : light > 0.4
+          ? 'rgba(30, 31, 36, 0.38)'
+          : 'rgba(96, 99, 108, 0.25)'
+    ctx.fillRect(x, y, 1, 1)
+  }
+
+  ctx.restore()
+
+  // A seam a shade darker, so the road still reads as laid rather than poured.
+  diamondPath(ctx, 0)
+  ctx.strokeStyle = 'rgba(20, 21, 25, 0.35)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  return element
+}
+
 const SKIN = '#d7a67c'
 const HAIR = '#3b2b21'
 const SHIRT = '#4f6fa8'
@@ -412,7 +467,8 @@ export function facingIndex(facingX: number, facingY: number): number {
  */
 interface TextureRef {
   readonly sheet: string
-  readonly index: number
+  /** Tiles within the sheet to cycle between, so a surface is not uniform. */
+  readonly indices: readonly number[]
 }
 
 /**
@@ -432,14 +488,15 @@ interface TextureRef {
 const WALL_MATERIAL = 0
 
 const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
-  [Tile.Grass, { sheet: 'grass', index: 0 }],
-  // Nothing in the floor pack is true asphalt — it leans natural and fantasy — so
-  // the road uses the darkest grey available. Real road surfaces are in the Town pack.
-  [Tile.Road, { sheet: 'stones', index: 10 }],
-  [Tile.Sidewalk, { sheet: 'tile', index: 2 }],
-  [Tile.Floorboards, { sheet: 'wood', index: 0 }],
-  [Tile.Tiles, { sheet: 'tile', index: 7 }],
-  [Tile.Concrete, { sheet: 'stone', index: 15 }],
+  // Dense undergrowth from the overworld pack rather than mown lawn — it reads as
+  // overgrown, which suits a world that has been left alone for a while.
+  [Tile.Grass, { sheet: 'forest', indices: [0, 1, 2, 4, 7, 9, 10, 13] }],
+  // Road has no entry: it is drawn by drawAsphalt below, because no pack here
+  // has a road surface.
+  [Tile.Sidewalk, { sheet: 'tile', indices: [2, 7, 2, 11] }],
+  [Tile.Floorboards, { sheet: 'wood', indices: [0, 3, 6] }],
+  [Tile.Tiles, { sheet: 'tile', indices: [7, 2, 11] }],
+  [Tile.Concrete, { sheet: 'stone', indices: [15, 9, 17] }],
 ])
 
 /**
@@ -480,14 +537,23 @@ export function buildSprites(
   sheets: ReadonlyMap<string, TileSheet>,
   characterSheets?: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>,
 ): Sprites {
-  const ground = new Map<TileId, HTMLCanvasElement>()
+  const ground = new Map<TileId, readonly HTMLCanvasElement[]>()
 
   for (const [id, palette] of GROUND_PALETTES) {
     const ref = GROUND_TEXTURES.get(id)
-    const textured = ref === undefined ? undefined : sheets.get(ref.sheet)?.tiles[ref.index]
+    const sheet = ref === undefined ? undefined : sheets.get(ref.sheet)
 
-    ground.set(id, textured ?? drawGroundTile(palette))
+    const variants =
+      ref === undefined || sheet === undefined
+        ? []
+        : ref.indices
+            .map((i) => sheet.tiles[i])
+            .filter((c): c is HTMLCanvasElement => c !== undefined)
+
+    ground.set(id, variants.length > 0 ? variants : [drawGroundTile(palette)])
   }
+
+  ground.set(Tile.Road, [0, 1, 2, 3].map(drawAsphalt))
 
   // Walls: one sprite per (kind, side, material). The art ships a separate render
   // for each facing rather than a mirror, because the coursing and lighting differ.

@@ -82,6 +82,8 @@ const [groundSheets, wallSheets] = await Promise.all([
       stone: '/tiles/stone.png',
       tile: '/tiles/tile.png',
       wood: '/tiles/wood.png',
+      forest: '/tiles/forest.png',
+      terrain: '/tiles/terrain.png',
     },
     TILE_W,
     TILE_H,

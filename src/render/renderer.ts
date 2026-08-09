@@ -139,6 +139,18 @@ function wallHeight(grid: Grid, x: number, y: number): number {
   return 1
 }
 
+/**
+ * A stable pseudo-random number per tile, for choosing a ground variant.
+ *
+ * Deterministic on position rather than actually random: the same tile must pick
+ * the same variant on every frame, or the ground crawls.
+ */
+function groundVariant(x: number, y: number): number {
+  let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1)
+  h = Math.imul(h ^ (h >>> 15), 0x2545f491)
+  return (h ^ (h >>> 13)) >>> 0
+}
+
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -156,7 +168,12 @@ export function renderScene(
   // Ground first. Flat tiles never overlap each other, so they need no sorting.
   for (let y = bounds.minY; y <= bounds.maxY; y++) {
     for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const sprite = sprites.ground.get(grid.at(x, y))
+      const variants = sprites.ground.get(grid.at(x, y))
+      if (variants === undefined || variants.length === 0) continue
+
+      // Which variant a tile uses is fixed by its position, so the ground is
+      // varied but never shimmers between frames.
+      const sprite = variants[groundVariant(x, y) % variants.length]
       if (sprite === undefined) continue
 
       const { sx, sy } = worldToScreen(x, y)
