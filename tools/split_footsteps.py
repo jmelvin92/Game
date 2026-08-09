@@ -17,6 +17,7 @@ of the size.
 
 from __future__ import annotations
 
+import json
 import struct
 import sys
 import wave
@@ -118,6 +119,24 @@ def write_step(path: Path, samples: list[int], rate: int) -> None:
         out.writeframes(struct.pack(f'<{len(decimated)}h', *decimated))
 
 
+def write_manifest() -> None:
+    """
+    Lists every clip on disk, grouped by sound name.
+
+    Written here rather than hard-coded in the game so that adding a surface is
+    only ever a matter of running this script — nothing in `src/` names a file, so
+    nothing has to be edited in step with the audio folder.
+    """
+    banks: dict[str, list[str]] = {}
+
+    for clip in sorted(OUT_DIR.glob('*.wav')):
+        # footstep-grass-03.wav -> footstep-grass
+        name = clip.stem.rsplit('-', 1)[0]
+        banks.setdefault(name, []).append(f'/audio/{clip.name}')
+
+    (OUT_DIR / 'manifest.json').write_text(json.dumps(banks, indent=2) + '\n')
+
+
 def main(source: Path, surface: str) -> None:
     samples, rate = read_mono(source)
     steps = find_steps(samples, rate)
@@ -140,6 +159,8 @@ def main(source: Path, surface: str) -> None:
 
         written += 1
         write_step(OUT_DIR / f'footstep-{surface}-{written:02d}.wav', clip, rate)
+
+    write_manifest()
 
     total = sum(p.stat().st_size for p in OUT_DIR.glob(f'footstep-{surface}-*.wav'))
     print(f'{surface}: {written} footsteps from {len(steps)} detected events')

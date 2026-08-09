@@ -164,31 +164,19 @@ if (import.meta.env.DEV) {
   Object.defineProperty(window, 'game', { value: { grid, actor, camera, input, clock } })
 }
 
-// Sound. Only grass exists so far; every other surface is silent until its
-// recording arrives, which is quieter than substituting the wrong one.
+// Sound. Surfaces without a recording stay silent rather than borrowing another's,
+// which would be worse than the gap and would hide which are still missing.
 const audio = createAudio()
 const footsteps = createFootsteps()
 
-void audio.load({
-  'footstep-grass': [
-    '/audio/footstep-grass-01.wav',
-    '/audio/footstep-grass-02.wav',
-    '/audio/footstep-grass-03.wav',
-    '/audio/footstep-grass-04.wav',
-    '/audio/footstep-grass-05.wav',
-    '/audio/footstep-grass-06.wav',
-    '/audio/footstep-grass-07.wav',
-    '/audio/footstep-grass-08.wav',
-    '/audio/footstep-grass-09.wav',
-    '/audio/footstep-grass-10.wav',
-    '/audio/footstep-grass-11.wav',
-    '/audio/footstep-grass-12.wav',
-    '/audio/footstep-grass-13.wav',
-    '/audio/footstep-grass-14.wav',
-    '/audio/footstep-grass-15.wav',
-  ],
-})
-
+// Clips are discovered from a manifest the splitting tool writes, so adding a
+// surface is a matter of running that tool — nothing here names a file.
+void fetch('/audio/manifest.json')
+  .then((response) => response.json() as Promise<Record<string, string[]>>)
+  .then((manifest) => audio.load(manifest))
+  .catch(() => {
+    // No manifest means no sound. Worth nothing more than silence.
+  })
 // Browsers refuse to play anything until the user has interacted with the page,
 // so the context is resumed from the first input rather than at load.
 for (const event of ['keydown', 'pointerdown'] as const) {
