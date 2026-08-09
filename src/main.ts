@@ -49,6 +49,19 @@ let viewWidth = 0
 let viewHeight = 0
 
 /**
+ * How much the world is magnified.
+ *
+ * Applied as a canvas transform rather than by changing the tile size, so nothing
+ * downstream — projection, culling, sprite sizes — has to know about it. The
+ * viewport handed to the renderer is divided by it instead, which is what keeps
+ * culling correct: at 2x you can see half as much world, not the same amount
+ * drawn twice as large.
+ */
+const MIN_ZOOM = 0.7
+const MAX_ZOOM = 3
+let zoom = 1.6
+
+/**
  * Size the canvas to the window in CSS pixels while backing it with the display's
  * real pixels, so the render is sharp rather than upscaled on a retina screen.
  */
@@ -62,13 +75,40 @@ function resize(): void {
   canvas.height = Math.round(viewHeight * ratio)
   canvas.style.width = `${String(viewWidth)}px`
   canvas.style.height = `${String(viewHeight)}px`
+}
 
-  // Drawing then happens in CSS pixels and the scaling is handled once, here.
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+/** Combines the display's pixel ratio with the zoom into one transform. */
+function applyTransform(): void {
+  const ratio = window.devicePixelRatio || 1
+  ctx.setTransform(ratio * zoom, 0, 0, ratio * zoom, 0, 0)
+
+  // Off, so the pixel art stays crisp when magnified rather than turning to mush.
+  ctx.imageSmoothingEnabled = false
 }
 
 resize()
 window.addEventListener('resize', resize)
+
+function setZoom(next: number): void {
+  zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next))
+}
+
+// Wheel to zoom, and keys for anyone without one. Multiplicative rather than
+// additive, so each notch feels the same at any magnification.
+window.addEventListener(
+  'wheel',
+  (event) => {
+    event.preventDefault()
+    setZoom(zoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12))
+  },
+  { passive: false },
+)
+
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Equal' || event.code === 'NumpadAdd') setZoom(zoom * 1.15)
+  if (event.code === 'Minus' || event.code === 'NumpadSubtract') setZoom(zoom / 1.15)
+  if (event.code === 'Digit0') setZoom(1.6)
+})
 
 const grid = createSandbox()
 const actor = createActor(SPAWN.x, SPAWN.y)
@@ -216,7 +256,14 @@ startLoop(
     followCamera(camera, actor.x, actor.y, step)
   },
   () => {
-    const lights = renderScene(ctx, viewWidth, viewHeight, {
+    applyTransform()
+
+    // The renderer works in world-space pixels. At 2x the viewport shows half as
+    // much of it, so it is told the smaller size and never learns about zoom.
+    const logicalWidth = viewWidth / zoom
+    const logicalHeight = viewHeight / zoom
+
+    const lights = renderScene(ctx, logicalWidth, logicalHeight, {
       grid,
       actor,
       camera,
@@ -229,13 +276,16 @@ startLoop(
     renderLighting(
       ctx,
       lightBuffer,
-      viewWidth,
-      viewHeight,
+      logicalWidth,
+      logicalHeight,
       darknessAt(clock.fraction),
       skyTint(clock.fraction),
       lights,
     )
 
-    drawHud(ctx, actor, grid, clock.label(), torchOn)
+    // The HUD is drawn unscaled, or the text would grow with the world.
+    const ratio = window.devicePixelRatio || 1
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    drawHud(ctx, actor, grid, clock.label(), torchOn, zoom)
   },
 )

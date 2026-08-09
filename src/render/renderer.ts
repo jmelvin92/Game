@@ -386,6 +386,7 @@ export function drawHud(
   grid: Grid,
   time: string,
   torch: boolean,
+  zoom: number,
 ): void {
   const tileX = Math.floor(actor.x)
   const tileY = Math.floor(actor.y)
@@ -395,12 +396,12 @@ export function drawHud(
   ctx.textBaseline = 'top'
 
   const lines = [
-    'WASD or arrows to walk  ·  shift to run  ·  F for torch',
-    `${time}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}${torch ? '  ·  torch on' : ''}`,
+    'WASD to walk  ·  shift to run  ·  F torch  ·  wheel or +/- to zoom',
+    `${time}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}`,
   ]
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-  ctx.fillRect(10, 10, 330, 8 + lines.length * 16)
+  ctx.fillRect(10, 10, 380, 8 + lines.length * 16)
 
   ctx.fillStyle = '#d6d9de'
   lines.forEach((line, i) => {
