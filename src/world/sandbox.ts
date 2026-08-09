@@ -2,7 +2,7 @@ import { createRng, type Rng } from '@/core/rng'
 import { archetypesFor, placeBuilding } from '@/world/buildings'
 import { District, districtAt, districtDef, type DistrictId } from '@/world/districts'
 import { createGrid, type Grid } from '@/world/grid'
-import { Prop, PROP_VARIANTS } from '@/world/props'
+import { LampState, Prop, PROP_VARIANTS } from '@/world/props'
 import { Tile } from '@/world/tiles'
 
 /**
@@ -125,13 +125,34 @@ export function createSandbox(seed: number = SANDBOX_SEED): Grid {
   }
 
   scatterVegetation(grid, rng)
-  placeStreetLights(grid)
+  placeStreetLights(grid, rng)
 
   return grid
 }
 
-/** Tiles between lamp posts along a pavement. */
-const LAMP_SPACING = 9
+/**
+ * Tiles between lamp posts along a pavement.
+ *
+ * Deliberately sparse. Evenly lit streets read as a functioning town; long dark
+ * stretches with the occasional pool of light do not, and the gaps are doing more
+ * for the atmosphere than the lamps are.
+ */
+const LAMP_SPACING = 23
+
+/**
+ * How lamps have fared. Weighted heavily toward failure — a working street light
+ * should feel like a small mercy rather than the default.
+ */
+const LAMP_STATES = [
+  LampState.Broken,
+  LampState.Broken,
+  LampState.Broken,
+  LampState.Broken,
+  LampState.Flickering,
+  LampState.Flickering,
+  LampState.Working,
+  LampState.Working,
+] as const
 
 /**
  * Puts lamp posts along the pavements at regular intervals.
@@ -141,7 +162,7 @@ const LAMP_SPACING = 9
  * as an artefact. They go on the pavement edge furthest from the road so they do
  * not stand in the middle of the footway.
  */
-function placeStreetLights(grid: Grid): void {
+function placeStreetLights(grid: Grid, rng: Rng): void {
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       if (grid.at(x, y) !== Tile.Sidewalk) continue
@@ -157,7 +178,7 @@ function placeStreetLights(grid: Grid): void {
         grid.at(x, y - 1) === Tile.Grass
       if (!beside) continue
 
-      grid.setProp(x, y, Prop.LampPost, 0)
+      grid.setProp(x, y, Prop.LampPost, rng.pick(LAMP_STATES))
     }
   }
 }

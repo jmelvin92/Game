@@ -27,7 +27,7 @@ export interface Light {
 }
 
 /** Night is blue rather than black: pure black reads as a bug, not as darkness. */
-const NIGHT_COLOUR = { r: 8, g: 14, b: 34 }
+const NIGHT_COLOUR = { r: 4, g: 7, b: 19 }
 
 /**
  * How dark it is at a given time of day, 0 to 1.
@@ -58,6 +58,27 @@ export function skyTint(fraction: number): { colour: string; alpha: number } {
     return { colour: 'rgb(120, 150, 220)', alpha: 0.18 * t }
   }
   return { colour: 'rgb(0, 0, 0)', alpha: 0 }
+}
+
+/**
+ * How brightly a failing lamp is burning at this instant.
+ *
+ * Mostly on with sudden brief dropouts, rather than a smooth pulse — a lamp about
+ * to fail stutters, and a sine wave reads as something magical instead. The seed
+ * gives every lamp its own rhythm, so a street of them never blinks in unison.
+ */
+export function flicker(seed: number, time: number): number {
+  const t = time * 6.3 + seed * 12.9898
+
+  // Two out-of-phase waves beat against each other, so the dropouts arrive at
+  // irregular intervals rather than on a fixed period.
+  const beat = Math.sin(t) + Math.sin(t * 1.7 + 1.3) * 0.6
+
+  if (beat > 1.15) return 0.06
+  if (beat > 1.02) return 0.42
+
+  // Even when lit, a failing tube is never quite steady.
+  return 0.86 + Math.sin(t * 5.1) * 0.09
 }
 
 /** Traces the lit area of a light — a disc, or a cone if it has a direction. */
@@ -119,7 +140,7 @@ export function renderLighting(
 
   shade.clearRect(0, 0, width, height)
   shade.globalCompositeOperation = 'source-over'
-  shade.fillStyle = `rgba(${String(NIGHT_COLOUR.r)}, ${String(NIGHT_COLOUR.g)}, ${String(NIGHT_COLOUR.b)}, ${String(0.88 * darkness)})`
+  shade.fillStyle = `rgba(${String(NIGHT_COLOUR.r)}, ${String(NIGHT_COLOUR.g)}, ${String(NIGHT_COLOUR.b)}, ${String(0.965 * darkness)})`
   shade.fillRect(0, 0, width, height)
 
   // Cut the lit areas out of the darkness. Softly, so lights have edges you can

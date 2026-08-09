@@ -1,7 +1,7 @@
 import { TILE_H, TILE_W } from '@/render/iso'
 import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
-import { Prop, PROP_VARIANTS, type PropId } from '@/world/props'
+import { LampState, Prop, PROP_VARIANTS, type PropId } from '@/world/props'
 import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
 
 /**
@@ -651,7 +651,6 @@ function drawScrub(variant: number): HTMLCanvasElement {
  */
 function drawLampPost(variant: number): HTMLCanvasElement {
   const [element, ctx] = canvas(PROP_W, PROP_H)
-  const random = seededRandom(variant * 41 + 17)
   const cx = PROP_ANCHOR.x
   const groundY = PROP_ANCHOR.y
 
@@ -681,8 +680,14 @@ function drawLampPost(variant: number): HTMLCanvasElement {
   ctx.roundRect(cx + reach - 9, groundY - height - 16, 18, 8, 2)
   ctx.fill()
 
-  const lit = random() > 0.18
-  ctx.fillStyle = lit ? '#ffd9a0' : '#4a4f57'
+  // Variant is the lamp's state, not a random style: a broken lamp must look
+  // broken whether or not the lighting pass is running.
+  ctx.fillStyle =
+    variant === LampState.Broken
+      ? '#3c4048'
+      : variant === LampState.Flickering
+        ? '#c9b083'
+        : '#ffd9a0'
   ctx.beginPath()
   ctx.ellipse(cx + reach, groundY - height - 7, 6.5, 3.5, 0, 0, Math.PI * 2)
   ctx.fill()

@@ -85,6 +85,21 @@ export function propLight(id: PropId): PropLight | undefined {
   return LIGHTS[id]
 }
 
+/**
+ * What state a lamp is in, stored as its prop variant.
+ *
+ * A world fact rather than a rendering one: whether a street is lit changes what
+ * can be seen and, eventually, where it is safe to walk. How a flicker *looks* is
+ * the renderer's business, but whether the lamp is broken is not.
+ */
+export const LampState = {
+  Working: 0,
+  Flickering: 1,
+  Broken: 2,
+} as const
+
+export type LampStateId = (typeof LampState)[keyof typeof LampState]
+
 export function propDef(id: PropId): PropDef {
   return DEFS[id]
 }

@@ -13,8 +13,8 @@ import {
   type Sprites,
 } from '@/render/sprites'
 import type { Grid } from '@/world/grid'
-import type { Light } from '@/render/lighting'
-import { Prop, propLight } from '@/world/props'
+import { flicker, type Light } from '@/render/lighting'
+import { LampState, Prop, propLight } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 import { Wall, WallSide } from '@/world/walls'
 
@@ -339,15 +339,27 @@ export function renderScene(
 
   for (let y = bounds.minY; y <= bounds.maxY; y++) {
     for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const emitted = propLight(grid.propAt(x, y))
+      const prop = grid.propAt(x, y)
+      const emitted = propLight(prop)
       if (emitted === undefined) continue
+
+      // A lamp's state lives in its variant. Broken ones emit nothing at all;
+      // flickering ones stutter on their own rhythm so a street never blinks in
+      // unison.
+      const state = grid.propVariantAt(x, y)
+      if (state === LampState.Broken) continue
+
+      const strength =
+        state === LampState.Flickering
+          ? emitted.strength * flicker(x * 7 + y * 13, scene.time)
+          : emitted.strength
 
       const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
       lights.push({
         x: ox + sx,
         y: oy + sy - emitted.height * TILE_Z,
         radius: emitted.radius * TILE_W * 0.5,
-        strength: emitted.strength,
+        strength,
         colour: 'rgba(255, 196, 118, 0.75)',
       })
     }
