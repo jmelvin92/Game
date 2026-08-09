@@ -14,6 +14,14 @@ export interface PlayOptions {
   readonly volume?: number
   /** Playback rate. 1 is unaltered; small deviations vary a repeated sound. */
   readonly rate?: number
+  /**
+   * Stereo position, -1 hard left through 0 centre to 1 hard right.
+   *
+   * Worth having for anything the player is meant to locate rather than merely
+   * notice. Something approaching in the dark is the case this exists for: which
+   * side it is on is the only information the player gets before they can see it.
+   */
+  readonly pan?: number
 }
 
 export interface Audio {
@@ -90,7 +98,16 @@ export function createAudio(volume = 0.7): Audio {
       const gain = ctx.createGain()
       gain.gain.value = options.volume ?? 1
 
-      source.connect(gain)
+      const pan = options.pan ?? 0
+      if (pan !== 0) {
+        const panner = ctx.createStereoPanner()
+        panner.pan.value = Math.max(-1, Math.min(1, pan))
+        source.connect(panner)
+        panner.connect(gain)
+      } else {
+        source.connect(gain)
+      }
+
       gain.connect(master)
       source.start()
     },

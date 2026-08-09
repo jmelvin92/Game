@@ -45,6 +45,8 @@ export interface Hunter {
   /** Seconds it has spent standing in light. Enough of it and it comes apart. */
   exposure: number
   moving: boolean
+  /** Distance covered since its last footfall. */
+  travelled: number
 }
 
 /**
@@ -79,6 +81,16 @@ const SEARCH_PATIENCE = 11
 /** How near a target counts as reached. */
 const ARRIVED = 0.9
 
+/**
+ * Tiles between their footfalls.
+ *
+ * Longer than the player's stride, because they are taller and their gait should
+ * not sound like a person's. It is also the only cue the player gets that
+ * something is approaching, so an even, unhurried rhythm carries better than a
+ * realistic one.
+ */
+const HUNTER_STRIDE = 1.35
+
 /** Fewer than before, and they last: one stalking you beats six converging. */
 const MAX_HUNTERS = 3
 
@@ -89,10 +101,20 @@ const DESPAWN_RANGE = 80
 /** Seconds between attempts to add another, at full darkness. */
 const SPAWN_INTERVAL = 26
 
+/** A footfall that happened during the last update, for whatever wants to hear it. */
+export interface Footfall {
+  readonly x: number
+  readonly y: number
+}
+
 export interface HunterPack {
   readonly hunters: readonly Hunter[]
   /** Seconds left on the cue that fires when one first notices you. */
   readonly noticedFor: number
+  /** True on the update where one first noticed the player. */
+  readonly justNoticed: boolean
+  /** Footfalls from the last update. Cleared and refilled every time. */
+  readonly footfalls: readonly Footfall[]
   update(
     grid: Grid,
     actor: Actor,
@@ -112,8 +134,10 @@ function noiseRadius(actor: Actor): number {
 
 export function createHunterPack(): HunterPack {
   const hunters: Hunter[] = []
+  const footfalls: Footfall[] = []
   let untilSpawn = 8
   let noticedFor = 0
+  let justNoticed = false
 
   const spawn = (grid: Grid, actor: Actor, rng: Rng): void => {
     for (let attempt = 0; attempt < 12; attempt++) {
@@ -137,6 +161,7 @@ export function createHunterPack(): HunterPack {
         patience: 0,
         exposure: 0,
         moving: false,
+        travelled: 0,
       })
       return
     }
@@ -173,6 +198,14 @@ export function createHunterPack(): HunterPack {
     if (!blocked(grid, hunter.x, nextY, 0.3)) hunter.y = nextY
 
     hunter.moving = hunter.x !== beforeX || hunter.y !== beforeY
+
+    // Footfalls are driven by distance covered, the same as the player's, so a
+    // faster hunter takes more steps rather than the same steps sped up.
+    hunter.travelled += Math.hypot(hunter.x - beforeX, hunter.y - beforeY)
+    if (hunter.travelled >= HUNTER_STRIDE) {
+      hunter.travelled -= HUNTER_STRIDE
+      footfalls.push({ x: hunter.x, y: hunter.y })
+    }
   }
 
   return {
@@ -181,6 +214,12 @@ export function createHunterPack(): HunterPack {
     get noticedFor() {
       return noticedFor
     },
+
+    get justNoticed() {
+      return justNoticed
+    },
+
+    footfalls,
 
     update(
       grid: Grid,
@@ -191,6 +230,8 @@ export function createHunterPack(): HunterPack {
       rng: Rng,
     ): boolean {
       noticedFor = Math.max(0, noticedFor - step)
+      justNoticed = false
+      footfalls.length = 0
 
       // Daylight unmakes them entirely. Not a fade — they are simply not there.
       if (darkness < 0.35) {
@@ -251,6 +292,7 @@ export function createHunterPack(): HunterPack {
             // Only the moment of first noticing raises the cue, or it would be on
             // permanently while anything was chasing.
             noticedFor = 1.6
+            justNoticed = true
           }
           hunter.state = HunterState.Hunting
           hunter.targetX = actor.x
@@ -306,8 +348,10 @@ export function createHunterPack(): HunterPack {
 
     clear(): void {
       hunters.length = 0
+      footfalls.length = 0
       untilSpawn = 8
       noticedFor = 0
+      justNoticed = false
     },
   }
 }

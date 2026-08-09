@@ -38,6 +38,7 @@ function packWith(x: number, y: number) {
     patience: 0,
     exposure: 0,
     moving: false,
+    travelled: 0,
   })
 
   return { pack, grid, actor, rng }

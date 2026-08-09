@@ -211,6 +211,48 @@ const sprites = buildSprites(sheets, characterSheets)
 // leave on, not something you hold down while walking.
 let torchOn = true
 
+/**
+ * How loud the White Eyes are at their loudest, right beside you.
+ *
+ * Very quiet. They are meant to be heard before they are seen, which needs them
+ * to be audible at all — and light-footed, which needs them not to announce
+ * themselves. The gap between those is the whole point: a sound you have to stop
+ * and listen for.
+ */
+const HUNTER_STEP_VOLUME = 0.3
+
+/** Tiles beyond which they cannot be heard at all. */
+const HUNTER_HEARING_RANGE = 24
+
+/**
+ * Plays a sound as coming from somewhere in the world.
+ *
+ * Volume falls off with distance and the stereo position follows the screen, so a
+ * footfall in the dark tells the player roughly how far and which side. That is the
+ * only information they get before anything becomes visible, so it is worth more
+ * than it costs.
+ */
+function playPositional(name: string, x: number, y: number, loudest: number, rate: number): void {
+  const dx = x - actor.x
+  const dy = y - actor.y
+  const distance = Math.hypot(dx, dy)
+  if (distance > HUNTER_HEARING_RANGE) return
+
+  // Squared falloff, so something close is much louder than something halfway —
+  // which is what makes the difference between "somewhere out there" and "here".
+  const nearness = 1 - distance / HUNTER_HEARING_RANGE
+
+  // Screen-space left/right, using the same projection the sprites use, so what
+  // is heard on the left is drawn on the left.
+  const screenX = dx - dy
+
+  audio.play(name, {
+    volume: loudest * nearness * nearness,
+    rate,
+    pan: Math.max(-1, Math.min(1, screenX / 18)),
+  })
+}
+
 const vitals = createVitals()
 const hunters = createHunterPack()
 
@@ -334,6 +376,23 @@ startLoop(
     drainCharges(grid, step)
 
     if (hunters.update(grid, actor, torchOn, step, darkness, playRng)) die()
+
+    // Being noticed gets one cue, however many of them noticed. Layering swells
+    // would turn a warning into noise at exactly the moment it needs to be clear.
+    if (hunters.justNoticed) audio.play('notice', { volume: 0.55 })
+
+    for (const footfall of hunters.footfalls) {
+      playPositional(
+        `footstep-${tileDef(grid.at(Math.floor(footfall.x), Math.floor(footfall.y))).name}`,
+        footfall.x,
+        footfall.y,
+        HUNTER_STEP_VOLUME,
+        // Pitched well down. It is the same recording as the player's own steps,
+        // and dropping it is most of what makes it read as something heavier and
+        // wrong rather than as a second person walking.
+        0.62 + Math.random() * 0.1,
+      )
+    }
 
     // The gift running the body down is its own end, separate from being caught.
     if (vitals.health <= 0) die()
