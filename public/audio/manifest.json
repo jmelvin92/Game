@@ -55,7 +55,5 @@
     "/audio/footstep-sidewalk-09.wav",
     "/audio/footstep-sidewalk-10.wav"
   ],
-  "notice": [
-    "/audio/notice.wav"
-  ]
+  "notice": ["/audio/notice.wav"]
 }

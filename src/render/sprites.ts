@@ -141,6 +141,8 @@ const GROUND_PALETTES: ReadonlyMap<TileId, Palette> = new Map([
   [Tile.Floorboards, { base: '#7a6248', edge: '#6b553e' }],
   [Tile.Tiles, { base: '#8f8f8a', edge: '#7d7d79' }],
   [Tile.Concrete, { base: '#6e6e6b', edge: '#5f5f5d' }],
+  [Tile.Dirt, { base: '#7a6446', edge: '#68553b', speck: '#8c7554' }],
+  [Tile.Rock, { base: '#6b6459', edge: '#5b554c' }],
 ])
 
 const WALL_TOP = '#b9ab95'
@@ -864,6 +866,10 @@ const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
   [Tile.Floorboards, { sheet: 'wood', indices: [0, 3, 6] }],
   [Tile.Tiles, { sheet: 'tile', indices: [7, 2, 11] }],
   [Tile.Concrete, { sheet: 'stone', indices: [15, 9, 17] }],
+  // Both sheets were pulled with the rest of the terrain pack and had no use
+  // while the map was only a town. Open country is what they were made for.
+  [Tile.Dirt, { sheet: 'dry', indices: [0, 1, 2, 5, 8] }],
+  [Tile.Rock, { sheet: 'rocky', indices: [0, 3, 6, 9] }],
 ])
 
 /**

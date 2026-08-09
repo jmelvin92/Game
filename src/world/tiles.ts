@@ -19,6 +19,10 @@ export const Tile = {
   Tiles: 4,
   /** Industrial interior. */
   Concrete: 5,
+  /** Bare earth. Farm tracks and worked fields out in the country. */
+  Dirt: 6,
+  /** Stony ground, too poor to have been farmed. */
+  Rock: 7,
 } as const
 
 export type TileId = (typeof Tile)[keyof typeof Tile]
@@ -37,6 +41,8 @@ const DEFS: Readonly<Record<TileId, TileDef>> = {
   [Tile.Floorboards]: { name: 'floorboards', solid: false },
   [Tile.Tiles]: { name: 'tiles', solid: false },
   [Tile.Concrete]: { name: 'concrete', solid: false },
+  [Tile.Dirt]: { name: 'dirt', solid: false },
+  [Tile.Rock]: { name: 'rock', solid: false },
 }
 
 export function tileDef(id: TileId): TileDef {

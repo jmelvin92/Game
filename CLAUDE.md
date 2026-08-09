@@ -240,8 +240,9 @@ GitHub is the backup, and every commit is a restore point.
 
 ## 7. Where the project stands
 
-**There is a walkable sandbox.** A city crossroads with four enterable buildings, and a character
-who walks around it in eight directions, collides with walls and passes behind them correctly.
+**There is a walkable sandbox.** A generated town of enterable buildings in the southern half of
+the map, open countryside in the northern half, and a character who walks around it in eight
+directions, collides with walls and passes behind them correctly.
 
 | Phase | Delivers                                                          | Tag      | Status |
 | ----- | ----------------------------------------------------------------- | -------- | ------ |
@@ -257,8 +258,11 @@ depends on what the game turns out to be, and that is still open. Ask rather tha
 
 ### Known limitations, honestly
 
-- **The world is a fixed 64×64 grid**, held entirely in memory. Fine for a sandbox, and the reason
-  chunking exists — but do not mistake it for a streaming world.
+- **The world is a fixed 128×256 grid**, held entirely in memory. Fine for a sandbox, and the
+  reason chunking exists — but do not mistake it for a streaming world. It is **taller than it is
+  wide on purpose**: `TOWN_TOP` in `src/world/sandbox.ts` splits it, with the town below and
+  countryside above. Nothing is built north of that line, `District.Countryside` exists to keep it
+  that way, and `tests/sandbox.test.ts` fails if buildings or street lighting appear there.
 - **Collision is circle-versus-tile**, resolved per axis with substepping so nothing tunnels at
   speed. There is no entity-to-entity collision, because there is only one entity.
 - **Tiles have a `height` field and an `opaque` flag that nothing reads yet.** They are there

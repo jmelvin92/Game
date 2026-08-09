@@ -3,7 +3,7 @@ import { archetypesFor, placeBuilding } from '@/world/buildings'
 import { District, districtAt, districtDef, type DistrictId } from '@/world/districts'
 import { createGrid, type Grid } from '@/world/grid'
 import { LampCondition, Prop, PROP_VARIANTS } from '@/world/props'
-import { Tile } from '@/world/tiles'
+import { Tile, type TileId } from '@/world/tiles'
 
 /**
  * Generates the town.
@@ -17,7 +17,24 @@ import { Tile } from '@/world/tiles'
  * layout bug seen once could never be looked at again.
  */
 
-export const SANDBOX_SIZE = 128
+/**
+ * The map is taller than it is wide.
+ *
+ * The town sits in the southern third and open country runs north of it, so the
+ * place has an edge — somewhere the streets stop and the map keeps going. A town
+ * that fills its own map has no outside, and nowhere to be that is not a street.
+ */
+export const SANDBOX_WIDTH = 128
+export const SANDBOX_HEIGHT = 256
+
+/**
+ * First row of the town. Everything north of this is country.
+ *
+ * Set so the town keeps the full extent it had before the country was added on top
+ * of it, rather than being squeezed into part of a map the same size.
+ */
+export const TOWN_TOP = 128
+
 export const SANDBOX_SEED = 20260808
 
 /** Tiles between road centrelines. */
@@ -25,60 +42,97 @@ const BLOCK = 32
 const ROAD_WIDTH = 4
 const PAVEMENT = 2
 
-export const SPAWN = { x: SANDBOX_SIZE / 2 + 0.5, y: SANDBOX_SIZE / 2 + 0.5 } as const
+const TOWN_CENTRE_X = SANDBOX_WIDTH / 2
+const TOWN_CENTRE_Y = (TOWN_TOP + SANDBOX_HEIGHT) / 2
+
+export const SPAWN = { x: TOWN_CENTRE_X + 0.5, y: TOWN_CENTRE_Y + 0.5 } as const
 
 /** True where a road runs, so lots can be kept clear of them. */
-function roadBand(v: number, size: number): boolean {
+function roadBand(v: number, centre: number): boolean {
   const half = ROAD_WIDTH / 2
-  for (let centre = size / 2; centre < size + BLOCK; centre += BLOCK) {
-    if (Math.abs(v - centre) < half) return true
+  for (let at = centre; at < centre + BLOCK * 12; at += BLOCK) {
+    if (Math.abs(v - at) < half) return true
   }
-  for (let centre = size / 2 - BLOCK; centre > -BLOCK; centre -= BLOCK) {
-    if (Math.abs(v - centre) < half) return true
+  for (let at = centre - BLOCK; at > centre - BLOCK * 12; at -= BLOCK) {
+    if (Math.abs(v - at) < half) return true
   }
   return false
 }
 
-function layStreets(grid: Grid, size: number): void {
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const onRoad = roadBand(x, size) || roadBand(y, size)
+function layStreets(grid: Grid): void {
+  for (let y = TOWN_TOP; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      const onRoad = roadBand(x, TOWN_CENTRE_X) || roadBand(y, TOWN_CENTRE_Y)
       if (onRoad) {
         grid.set(x, y, Tile.Road)
         continue
       }
 
       const nearRoad =
-        roadBand(x - PAVEMENT, size) ||
-        roadBand(x + PAVEMENT, size) ||
-        roadBand(y - PAVEMENT, size) ||
-        roadBand(y + PAVEMENT, size)
+        roadBand(x - PAVEMENT, TOWN_CENTRE_X) ||
+        roadBand(x + PAVEMENT, TOWN_CENTRE_X) ||
+        roadBand(y - PAVEMENT, TOWN_CENTRE_Y) ||
+        roadBand(y + PAVEMENT, TOWN_CENTRE_Y)
 
       if (nearRoad) grid.set(x, y, Tile.Sidewalk)
     }
   }
 }
 
+/**
+ * One road leaving town to the north.
+ *
+ * Without it the countryside is somewhere the map merely continues into. A road
+ * running out of town and stopping at the horizon is a reason to walk that way, and
+ * a line to find your way back along in the dark.
+ *
+ * No pavements: it stops being a street the moment it leaves the last house.
+ */
+function layHighway(grid: Grid, rng: Rng): void {
+  // Follows one of the town's own north-south roads out, so it joins the grid
+  // rather than appearing beside it.
+  let x = TOWN_CENTRE_X
+
+  for (let y = TOWN_TOP - 1; y >= 0; y--) {
+    // Wanders very slightly, because a dead straight line for a hundred tiles
+    // reads as a drawing rather than as a road.
+    if (rng.chance(0.14)) x += rng.chance(0.5) ? 1 : -1
+    x = Math.max(6, Math.min(grid.width - 7, x))
+
+    for (let w = -ROAD_WIDTH / 2; w < ROAD_WIDTH / 2; w++) {
+      grid.set(Math.round(x + w), y, Tile.Road)
+    }
+  }
+}
+
 export function createSandbox(seed: number = SANDBOX_SEED): Grid {
-  const size = SANDBOX_SIZE
-  const grid = createGrid(size, size, Tile.Grass)
+  const grid = createGrid(SANDBOX_WIDTH, SANDBOX_HEIGHT, Tile.Grass)
   const rng = createRng(seed)
 
-  layStreets(grid, size)
+  layStreets(grid)
+  layHighway(grid, rng)
+  layFields(grid, rng)
 
   let nextBuildingId = 1
   const inset = ROAD_WIDTH / 2 + PAVEMENT + 1
 
-  for (let blockY = 0; blockY < size; blockY += BLOCK) {
-    for (let blockX = 0; blockX < size; blockX += BLOCK) {
+  for (let blockY = TOWN_TOP; blockY < grid.height; blockY += BLOCK) {
+    for (let blockX = 0; blockX < grid.width; blockX += BLOCK) {
       const blockOriginX = blockX + inset
       const blockOriginY = blockY + inset
       const blockW = BLOCK - inset * 2
       const blockH = BLOCK - inset * 2
 
-      if (blockOriginX + blockW >= size || blockOriginY + blockH >= size) continue
+      if (blockOriginX + blockW >= grid.width || blockOriginY + blockH >= grid.height) continue
 
-      const district = districtAt(blockOriginX + blockW / 2, blockOriginY + blockH / 2, size)
+      const district = districtAt(
+        blockOriginX + blockW / 2,
+        blockOriginY + blockH / 2,
+        grid.width,
+        TOWN_TOP,
+        TOWN_CENTRE_X,
+        TOWN_CENTRE_Y,
+      )
 
       // How finely a block is carved up is what sets the density of the area, and
       // density is most of what makes a district feel different on foot. Housing is
@@ -166,7 +220,8 @@ const LAMP_CONDITIONS = [
  * not stand in the middle of the footway.
  */
 function placeStreetLights(grid: Grid, rng: Rng): void {
-  for (let y = 0; y < grid.height; y++) {
+  // Town only. A lamp post standing in a field is not eerie, it is a mistake.
+  for (let y = TOWN_TOP; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
       if (grid.at(x, y) !== Tile.Sidewalk) continue
       if (grid.propAt(x, y) !== Prop.None) continue
@@ -242,15 +297,17 @@ function scatterVegetation(grid: Grid, rng: Rng): void {
 
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
-      if (grid.at(x, y) !== Tile.Grass) continue
+      const here = grid.at(x, y)
+      if (!growsOn(here)) continue
       if (grid.buildingAt(x, y) !== 0) continue
 
-      // Keep clear of anything paved, so trees do not block doorways or pavements.
+      // Keep clear of paving, so trees do not block doorways or pavements. Only
+      // paving: a field boundary is not a reason for nothing to grow beside it,
+      // and treating it as one leaves a bald margin around every field.
       let nearPaved = false
       for (let dy = -1; dy <= 1 && !nearPaved; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
-          const neighbour = grid.at(x + dx, y + dy)
-          if (neighbour !== Tile.Grass) {
+          if (isPaved(grid.at(x + dx, y + dy))) {
             nearPaved = true
             break
           }
@@ -258,28 +315,86 @@ function scatterVegetation(grid: Grid, rng: Rng): void {
       }
       if (nearPaved) continue
 
-      const density = densityAt(x, y)
+      let density = densityAt(x, y)
+
+      // Thicker out in the country. In town the gaps between trees are streets and
+      // buildings; with those gone, the same sparse scatter reads as an empty field
+      // rather than as land nobody has cut back in years.
+      if (y < TOWN_TOP) density *= 2.1
+
+      // Worked ground carries scrub at best — a field that has gone to seed, not
+      // woodland. It is also what keeps the fields legible as fields.
+      const wooded = here === Tile.Grass
 
       // Sparse, and weighted toward the bare and the half-dead. Standing timber
       // is the exception rather than the rule; low dry growth is what fills the
       // gaps between.
-      if (rng.next() < density * 0.1) {
+      if (wooded && rng.next() < density * 0.1) {
         grid.setProp(x, y, rng.pick(CANOPY), rng.int(0, PROP_VARIANTS - 1))
-      } else if (rng.next() < density * 0.22) {
+      } else if (rng.next() < density * (wooded ? 0.22 : 0.1)) {
         grid.setProp(x, y, rng.pick(GROUND_COVER), rng.int(0, PROP_VARIANTS - 1))
       }
     }
   }
 }
 
+/** Ground that will carry a plant. */
+function growsOn(tile: TileId): boolean {
+  return tile === Tile.Grass || tile === Tile.Dirt || tile === Tile.Rock
+}
+
+/** Ground somebody laid, as opposed to ground that was already there. */
+function isPaved(tile: TileId): boolean {
+  return tile === Tile.Road || tile === Tile.Sidewalk
+}
+
 /** How many plots a block is divided into along each axis. */
 function lotsPerBlock(district: DistrictId): number {
   switch (district) {
     case District.Residential:
-      return 2
     case District.Commercial:
       return 2
     case District.Industrial:
       return 1
+    case District.Countryside:
+      // Nothing is built out here, so no plots are wanted.
+      return 0
+  }
+}
+
+/**
+ * Lays fields across the countryside.
+ *
+ * Large, irregular patches of dry ground and worked earth. They matter less as
+ * scenery than as landmarks: an unbroken expanse of the same grass gives nothing to
+ * navigate by, and a country with no features is a country you get lost in rather
+ * than one you cross.
+ *
+ * Kept off the road, so the way back to town stays legible.
+ */
+function layFields(grid: Grid, rng: Rng): void {
+  const fields = 26
+
+  for (let i = 0; i < fields; i++) {
+    const w = rng.int(14, 30)
+    const h = rng.int(10, 22)
+    const x = rng.int(2, Math.max(3, grid.width - w - 2))
+    const y = rng.int(2, Math.max(3, TOWN_TOP - h - 2))
+
+    const surface = rng.pick([Tile.Dirt, Tile.Dirt, Tile.Dirt, Tile.Rock] as const)
+
+    for (let ty = y; ty < y + h; ty++) {
+      for (let tx = x; tx < x + w; tx++) {
+        if (grid.at(tx, ty) === Tile.Road) continue
+
+        // Ragged edges. A field with straight sides reads as a placed rectangle,
+        // which is exactly what it is and exactly what it should not look like.
+        const edgeX = Math.min(tx - x, x + w - 1 - tx)
+        const edgeY = Math.min(ty - y, y + h - 1 - ty)
+        if (Math.min(edgeX, edgeY) < 2 && rng.chance(0.55)) continue
+
+        grid.set(tx, ty, surface)
+      }
+    }
   }
 }
