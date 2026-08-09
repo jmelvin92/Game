@@ -1,88 +1,73 @@
 import { describe, expect, it } from 'vitest'
 
-import { createSandbox, SANDBOX_HEIGHT, SANDBOX_WIDTH, SPAWN } from '@/world/sandbox'
+import {
+  createSandbox,
+  HOUSES,
+  LAMP_COUNT,
+  SANDBOX_HEIGHT,
+  SANDBOX_WIDTH,
+  SPAWN,
+} from '@/world/sandbox'
 import { Prop } from '@/world/props'
 import { isSolid, Tile } from '@/world/tiles'
 import { blocksMovement, WallSide } from '@/world/walls'
 
 /**
- * Properties of the finished island. Generated once and inspected, because these
- * are facts about the whole world rather than any function in it — and most of
- * them guard against quiet regressions: a noise change that drowns the city, a
- * fence that seals a district, a building stamped into the sea.
+ * Properties of the workshop block. Small world, small invariants — but the
+ * ones that matter are the same ones the island had: everything walkable is
+ * one connected place, and what the plan promises is what the grid holds.
  */
 const grid = createSandbox()
 
-describe('the island', () => {
+describe('the block', () => {
   it('is the right size', () => {
     expect(grid.width).toBe(SANDBOX_WIDTH)
     expect(grid.height).toBe(SANDBOX_HEIGHT)
   })
 
-  it('is surrounded by open sea', () => {
-    for (let i = 0; i < grid.width; i++) {
-      expect(grid.at(i, 0)).toBe(Tile.Water)
-      expect(grid.at(i, grid.height - 1)).toBe(Tile.Water)
-      expect(grid.at(0, i)).toBe(Tile.Water)
-      expect(grid.at(grid.width - 1, i)).toBe(Tile.Water)
-    }
-  })
-
-  it('keeps every building on dry land', () => {
+  it('holds exactly the six houses', () => {
+    const ids = new Set<number>()
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
-        if (grid.buildingAt(x, y) === 0) continue
-        expect(grid.at(x, y), `building floor at ${String(x)},${String(y)}`).not.toBe(Tile.Water)
+        const b = grid.buildingAt(x, y)
+        if (b !== 0) ids.add(b)
       }
     }
+    expect(ids.size).toBe(HOUSES)
   })
 
-  it('has a substantial amount of land and of sea', () => {
-    let water = 0
-    for (let y = 0; y < grid.height; y += 2) {
-      for (let x = 0; x < grid.width; x += 2) {
-        if (grid.at(x, y) === Tile.Water) water++
+  it('holds exactly the five lamps', () => {
+    let lamps = 0
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        if (grid.propAt(x, y) === Prop.LampPost) lamps++
       }
     }
-    const fraction = water / ((grid.width / 2) * (grid.height / 2))
-    expect(fraction).toBeGreaterThan(0.25)
-    expect(fraction).toBeLessThan(0.65)
+    expect(lamps).toBe(LAMP_COUNT)
   })
 
-  it('varies its ground', () => {
-    const seen = new Set<number>()
-    for (let y = 0; y < grid.height; y += 3) {
-      for (let x = 0; x < grid.width; x += 3) {
-        seen.add(grid.at(x, y))
+  it('runs streets with pavements', () => {
+    let road = 0
+    let pavement = 0
+    for (let y = 0; y < grid.height; y++) {
+      for (let x = 0; x < grid.width; x++) {
+        if (grid.at(x, y) === Tile.Road) road++
+        if (grid.at(x, y) === Tile.Sidewalk) pavement++
       }
     }
-    // Sea, beach, grass, road, pavement, concrete, sand or rock, soil: an island
-    // that lost one of these lost a biome or a settlement.
-    for (const tile of [
-      Tile.Water,
-      Tile.Sand,
-      Tile.Grass,
-      Tile.Road,
-      Tile.Sidewalk,
-      Tile.Concrete,
-      Tile.Soil,
-    ]) {
-      expect(seen.has(tile), `no ${String(tile)} tile found`).toBe(true)
-    }
+    expect(road).toBeGreaterThan(0)
+    expect(pavement).toBeGreaterThan(0)
   })
-})
 
-describe('getting around', () => {
-  it('spawns the player on walkable ground', () => {
+  it('spawns the player on walkable ground facing a front path', () => {
     const tile = grid.at(Math.floor(SPAWN.x), Math.floor(SPAWN.y))
     expect(isSolid(tile)).toBe(false)
     expect(grid.buildingAt(Math.floor(SPAWN.x), Math.floor(SPAWN.y))).toBe(0)
   })
 
-  it('leaves the whole island connected', () => {
-    // Flood fill from the spawn, crossing tile edges only where no solid wall
-    // stands on the boundary — the same rule movement enforces. Anywhere land
-    // this cannot reach is somewhere a fence or a building sealed off.
+  it('leaves everywhere reachable from the spawn', () => {
+    // The same flood the island had, over the same rules movement uses. Six
+    // hand-placed houses can still seal something between them.
     const reached = new Uint8Array(grid.width * grid.height)
     const queue: number[] = [Math.floor(SPAWN.y) * grid.width + Math.floor(SPAWN.x)]
     reached[queue[0] ?? 0] = 1
@@ -94,12 +79,12 @@ describe('getting around', () => {
       const y = (index - x) / grid.width
       count++
 
-      const step = (nx: number, ny: number, wallX: number, wallY: number, side: number): void => {
+      const step = (nx: number, ny: number, wallX: number, wallY: number, side: 0 | 1): void => {
         if (!grid.contains(nx, ny)) return
         const ni = ny * grid.width + nx
         if (reached[ni] === 1) return
         if (isSolid(grid.at(nx, ny))) return
-        if (blocksMovement(grid.wallAt(wallX, wallY, side as 0 | 1))) return
+        if (blocksMovement(grid.wallAt(wallX, wallY, side))) return
         reached[ni] = 1
         queue.push(ni)
       }
@@ -110,58 +95,13 @@ describe('getting around', () => {
       step(x, y - 1, x, y, WallSide.North)
     }
 
-    let land = 0
+    let walkable = 0
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
-        if (!isSolid(grid.at(x, y))) land++
+        if (!isSolid(grid.at(x, y))) walkable++
       }
     }
 
-    // Interiors behind doors count as reachable (doorways do not block), so the
-    // bar is high: nearly all walkable ground must be one connected place.
-    expect(count / land).toBeGreaterThan(0.95)
-  })
-
-  it('reaches both airfields and the second town by land', () => {
-    // Walk a straight sample of destinations rather than repeating the fill:
-    // concrete at both airfield sites, and road at the town's centre.
-    const spots = [
-      { name: 'city airfield', x: 700, y: 680, tile: Tile.Concrete },
-      { name: 'rural airfield', x: 300, y: 212, tile: Tile.Concrete },
-      { name: 'town crossroads', x: 430, y: 300, tile: Tile.Road },
-    ]
-    for (const spot of spots) {
-      let found = false
-      for (let dy = -20; dy <= 20 && !found; dy++) {
-        for (let dx = -20; dx <= 20 && !found; dx++) {
-          if (grid.at(spot.x + dx, spot.y + dy) === spot.tile) found = true
-        }
-      }
-      expect(found, `${spot.name} missing`).toBe(true)
-    }
-  })
-})
-
-describe('the settlements', () => {
-  it('holds exactly one building: the house', () => {
-    const ids = new Set<number>()
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        const b = grid.buildingAt(x, y)
-        if (b !== 0) ids.add(b)
-      }
-    }
-    expect(ids.size).toBe(1)
-  })
-
-  it('lit some streets and left most dark', () => {
-    let lamps = 0
-    for (let y = 0; y < grid.height; y++) {
-      for (let x = 0; x < grid.width; x++) {
-        if (grid.propAt(x, y) === Prop.LampPost) lamps++
-      }
-    }
-    expect(lamps).toBeGreaterThan(8)
-    expect(lamps).toBeLessThan(220)
+    expect(count).toBe(walkable)
   })
 })

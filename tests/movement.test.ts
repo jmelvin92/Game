@@ -164,9 +164,7 @@ describe('sandbox', () => {
     expect(reachedInterior).toBe(interior)
   })
 
-  it('builds exactly the one house', () => {
-    // The world is deliberately down to a single hand-built building while the
-    // house is perfected; the generator returns once it is right.
+  it('builds the six houses of the block', () => {
     const grid = createSandbox()
 
     const ids = new Set<number>()
@@ -180,14 +178,16 @@ describe('sandbox', () => {
       }
     }
 
-    expect([...ids]).toEqual([1])
+    expect([...ids].sort((m, n) => m - n)).toEqual([1, 2, 3, 4, 5, 6])
     expect(roofed).toBeGreaterThan(0)
   })
 
-  it('produces the same town from the same seed', () => {
+  it('produces the same block every time', () => {
+    // The workshop block is authored, not generated: the seed is deliberately
+    // ignored, and the same world comes back whatever it is. When generation
+    // returns, so does the assertion that different seeds differ.
     const a = createSandbox(1234)
-    const b = createSandbox(1234)
-    const different = createSandbox(9999)
+    const b = createSandbox(9999)
 
     const signature = (grid: ReturnType<typeof createSandbox>): string => {
       let out = ''
@@ -200,7 +200,6 @@ describe('sandbox', () => {
     }
 
     expect(signature(a)).toBe(signature(b))
-    expect(signature(a)).not.toBe(signature(different))
   })
 })
 

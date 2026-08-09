@@ -240,15 +240,15 @@ GitHub is the backup, and every commit is a restore point.
 
 ## 7. Where the project stands
 
-**There is a walkable island with one hand-built house on it.** Biome noise shapes an island of
-grassland, forest, desert and beach ringed by open sea; streets, farms' fields and two airfields'
-ground works survive — but **all generated buildings are removed by request**. One house exists,
-laid out by hand in `src/world/house.ts`: four rooms, windows, one front door, and full furnishing
-including devices the gift can wake (floor lamps, a television, a refrigerator). It is the
-standard the building generator will be rebuilt to meet, room by furnished room, before buildings
-return at scale. The player spawns on its front path. Furniture is props with facing in the
-variant slot — lamp _condition_ also lives in the variant slot, so lamp-specific rules (Broken
-refuses charge, Damaged flickers) are gated on the prop being a LampPost.
+**There is a workshop block.** One city block, 80×80: two streets, six copies of the hand-built
+house from `src/world/house.ts`, five lamp posts, nothing else. This is deliberate scope, not lost
+progress — the 1024×1024 biome island with city, farms and airfields lives in git history
+(`git log -- src/world/sandbox.ts`) and returns once the house-scale pieces are right. The house
+is four furnished rooms with devices the gift can wake (floor lamps, television, refrigerator);
+its plan does not rotate, so every copy faces south and the block is laid out accordingly.
+Furniture is props with facing in the variant slot — lamp _condition_ also lives in the variant
+slot, so lamp-specific rules (Broken refuses charge, Damaged flickers) are gated on the prop being
+a LampPost.
 
 | Phase | Delivers                                                          | Tag      | Status |
 | ----- | ----------------------------------------------------------------- | -------- | ------ |
