@@ -333,7 +333,7 @@ startLoop(
     updateVitals(vitals, step, 1 - darkness)
     drainCharges(grid, step)
 
-    if (hunters.update(grid, actor, step, darkness, playRng)) die()
+    if (hunters.update(grid, actor, torchOn, step, darkness, playRng)) die()
 
     // The gift running the body down is its own end, separate from being caught.
     if (vitals.health <= 0) die()
@@ -391,7 +391,7 @@ startLoop(
     const ratio = window.devicePixelRatio || 1
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
-    renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed)
+    renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed, hunters.noticedFor)
     drawHud(ctx, actor, grid, clock.label(), torchOn, zoom)
   },
 )

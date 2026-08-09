@@ -1,34 +1,71 @@
+import type { Rng } from '@/core/rng'
 import type { Actor } from '@/entity/actor'
 import { blocked } from '@/entity/movement'
-import type { Rng } from '@/core/rng'
 import type { Grid } from '@/world/grid'
 import { isLit } from '@/world/illumination'
+import { hasLineOfSight } from '@/world/vision'
 
 /**
  * The White Eyes.
  *
- * They cannot hold together in light. That single rule is the whole design: it is
- * why the gift is worth its cost, why a lit lamp is worth walking to, and why the
- * dark between them is worth being afraid of.
+ * They cannot hold together in light. That single rule is why the gift is worth
+ * what it costs, why a lit lamp is worth walking to, and why the dark between them
+ * is worth being afraid of.
  *
- * They do not exist at all during the day, and are only rarely found indoors then —
- * which is not built yet, and is the one place the daytime is meant to stop being
- * safe.
+ * They do not know where you are. That is the other half, and it is what makes this
+ * a game about not being found rather than a game about running: they see, they
+ * hear, and when they lose you they go to where you *were* and search. Everything
+ * below exists to make that true.
  */
+
+export const HunterState = {
+  /** Drifting, aware of nothing. */
+  Wandering: 0,
+  /** Heard something. Moving to look, not yet certain. */
+  Suspicious: 1,
+  /** Has you. */
+  Hunting: 2,
+  /** Lost you. Checking where you were before giving up. */
+  Searching: 3,
+} as const
+
+export type HunterStateId = (typeof HunterState)[keyof typeof HunterState]
 
 export interface Hunter {
   x: number
   y: number
   facingX: number
   facingY: number
-  speed: number
+  state: HunterStateId
+  /** Where it believes you are. Not where you are. */
+  targetX: number
+  targetY: number
+  /** Seconds left before it gives up on a search. */
+  patience: number
   /** Seconds it has spent standing in light. Enough of it and it comes apart. */
   exposure: number
   moving: boolean
 }
 
-/** Faster than a walk, slower than a sprint: you can outrun one, but not for long. */
-const HUNTER_SPEED = 4.6
+/**
+ * How far they see in the dark.
+ *
+ * Short. They are not sentries — they find you by noise far more often than by
+ * sight, and a long sight range would make cover pointless.
+ */
+const SIGHT_RANGE = 8.5
+
+/** How far a lit torch can be seen from. You are a beacon and it costs you. */
+const TORCH_SIGHT_RANGE = 20
+
+/** How far the sound of moving carries. */
+const NOISE_WALKING = 5.5
+const NOISE_RUNNING = 12
+
+/** Speeds. Searching is slower than hunting, which is what lets you break away. */
+const SPEED_HUNTING = 4.6
+const SPEED_SEARCHING = 2.6
+const SPEED_WANDERING = 1.4
 
 /** How close before it has you. */
 const CATCH_RANGE = 0.55
@@ -36,38 +73,49 @@ const CATCH_RANGE = 0.55
 /** Seconds in light before one comes apart. */
 const EXPOSURE_LIMIT = 1.2
 
-/** How many can be abroad at once. */
-const MAX_HUNTERS = 6
+/** Seconds it will keep looking after losing you. */
+const SEARCH_PATIENCE = 11
 
-/** Tiles from the player they appear at — beyond sight, close enough to matter. */
-const SPAWN_MIN = 22
-const SPAWN_MAX = 38
+/** How near a target counts as reached. */
+const ARRIVED = 0.9
 
-/** Beyond this they are forgotten, so the far side of the map is not being simulated. */
-const DESPAWN_RANGE = 70
+/** Fewer than before, and they last: one stalking you beats six converging. */
+const MAX_HUNTERS = 3
+
+const SPAWN_MIN = 26
+const SPAWN_MAX = 42
+const DESPAWN_RANGE = 80
 
 /** Seconds between attempts to add another, at full darkness. */
-const SPAWN_INTERVAL = 9
+const SPAWN_INTERVAL = 26
 
 export interface HunterPack {
   readonly hunters: readonly Hunter[]
-  /**
-   * Advances every hunter.
-   *
-   * @param darkness 0 in daylight through to 1 at night
-   * @returns true if one of them reached the player
-   */
-  update(grid: Grid, actor: Actor, step: number, darkness: number, rng: Rng): boolean
+  /** Seconds left on the cue that fires when one first notices you. */
+  readonly noticedFor: number
+  update(
+    grid: Grid,
+    actor: Actor,
+    torchOn: boolean,
+    step: number,
+    darkness: number,
+    rng: Rng,
+  ): boolean
   clear(): void
+}
+
+/** How far the noise of the player's movement carries right now. */
+function noiseRadius(actor: Actor): number {
+  if (!actor.moving) return 0
+  return actor.running ? NOISE_RUNNING : NOISE_WALKING
 }
 
 export function createHunterPack(): HunterPack {
   const hunters: Hunter[] = []
-  let untilSpawn = 4
+  let untilSpawn = 8
+  let noticedFor = 0
 
   const spawn = (grid: Grid, actor: Actor, rng: Rng): void => {
-    // A handful of attempts, then give up until the next interval. Searching
-    // harder than this would only find somewhere worse.
     for (let attempt = 0; attempt < 12; attempt++) {
       const angle = rng.next() * Math.PI * 2
       const distance = SPAWN_MIN + rng.next() * (SPAWN_MAX - SPAWN_MIN)
@@ -76,7 +124,6 @@ export function createHunterPack(): HunterPack {
 
       if (x < 2 || y < 2 || x > grid.width - 2 || y > grid.height - 2) continue
       if (blocked(grid, x, y, 0.3)) continue
-      // Never in light: they could not have formed there.
       if (isLit(grid, x, y)) continue
 
       hunters.push({
@@ -84,7 +131,10 @@ export function createHunterPack(): HunterPack {
         y,
         facingX: 1,
         facingY: 1,
-        speed: HUNTER_SPEED,
+        state: HunterState.Wandering,
+        targetX: x,
+        targetY: y,
+        patience: 0,
         exposure: 0,
         moving: false,
       })
@@ -92,14 +142,60 @@ export function createHunterPack(): HunterPack {
     }
   }
 
+  /** Moves toward a point, sliding along whatever it catches on. */
+  const advance = (grid: Grid, hunter: Hunter, speed: number, step: number): void => {
+    const dx = hunter.targetX - hunter.x
+    const dy = hunter.targetY - hunter.y
+    const distance = Math.hypot(dx, dy)
+
+    if (distance < 0.05) {
+      hunter.moving = false
+      return
+    }
+
+    const dirX = dx / distance
+    const dirY = dy / distance
+    hunter.facingX = dirX
+    hunter.facingY = dirY
+
+    const travel = speed * step
+    const beforeX = hunter.x
+    const beforeY = hunter.y
+
+    // Straight-line pursuit with per-axis sliding. There is still no pathfinding,
+    // so they catch on the outside corners of buildings — but searching now sends
+    // them to a remembered point rather than to the player, so getting stuck is a
+    // way to be escaped rather than a permanent lock.
+    const nextX = hunter.x + dirX * travel
+    if (!blocked(grid, nextX, hunter.y, 0.3)) hunter.x = nextX
+
+    const nextY = hunter.y + dirY * travel
+    if (!blocked(grid, hunter.x, nextY, 0.3)) hunter.y = nextY
+
+    hunter.moving = hunter.x !== beforeX || hunter.y !== beforeY
+  }
+
   return {
     hunters,
 
-    update(grid: Grid, actor: Actor, step: number, darkness: number, rng: Rng): boolean {
+    get noticedFor() {
+      return noticedFor
+    },
+
+    update(
+      grid: Grid,
+      actor: Actor,
+      torchOn: boolean,
+      step: number,
+      darkness: number,
+      rng: Rng,
+    ): boolean {
+      noticedFor = Math.max(0, noticedFor - step)
+
       // Daylight unmakes them entirely. Not a fade — they are simply not there.
       if (darkness < 0.35) {
         hunters.length = 0
-        untilSpawn = 4
+        untilSpawn = 8
         return false
       }
 
@@ -109,6 +205,8 @@ export function createHunterPack(): HunterPack {
         if (hunters.length < MAX_HUNTERS) spawn(grid, actor, rng)
       }
 
+      const playerSafe = isLit(grid, actor.x, actor.y)
+      const heardFrom = noiseRadius(actor)
       let caught = false
 
       for (let i = hunters.length - 1; i >= 0; i--) {
@@ -124,8 +222,8 @@ export function createHunterPack(): HunterPack {
           continue
         }
 
-        // Standing in light takes them apart. Not instantly — long enough that a
-        // lamp reads as a place to retreat to rather than a wall they cannot cross.
+        // Light takes them apart. Not instantly, so a lamp reads as somewhere to
+        // retreat to rather than a wall they cannot cross.
         if (isLit(grid, hunter.x, hunter.y)) {
           hunter.exposure += step
           if (hunter.exposure >= EXPOSURE_LIMIT) {
@@ -136,38 +234,71 @@ export function createHunterPack(): HunterPack {
           hunter.exposure = Math.max(0, hunter.exposure - step * 0.5)
         }
 
-        // They will not enter light willingly, so someone standing under a working
-        // lamp is left alone — watched, but not approached.
-        const playerSafe = isLit(grid, actor.x, actor.y)
+        // Perception. Sight needs an unobstructed line, which is what makes
+        // putting a building between you and one of them actually work. A lit
+        // torch is visible from far further than a body — the trade for being
+        // able to see is being seen.
+        const seen =
+          !playerSafe &&
+          distance <= (torchOn ? TORCH_SIGHT_RANGE : SIGHT_RANGE) &&
+          hasLineOfSight(grid, hunter.x, hunter.y, actor.x, actor.y)
 
-        if (playerSafe || distance < 0.001) {
-          hunter.moving = false
-          continue
+        // Noise passes through walls; that is the point of having a second sense.
+        const heard = !playerSafe && heardFrom > 0 && distance <= heardFrom
+
+        if (seen || heard) {
+          if (hunter.state !== HunterState.Hunting) {
+            // Only the moment of first noticing raises the cue, or it would be on
+            // permanently while anything was chasing.
+            noticedFor = 1.6
+          }
+          hunter.state = HunterState.Hunting
+          hunter.targetX = actor.x
+          hunter.targetY = actor.y
+          hunter.patience = SEARCH_PATIENCE
+        } else if (hunter.state === HunterState.Hunting) {
+          // Lost. It keeps going to where you were, which is what makes breaking
+          // line of sight worth doing.
+          hunter.state = HunterState.Searching
         }
 
-        if (distance <= CATCH_RANGE) {
+        if (distance <= CATCH_RANGE && !playerSafe) {
           caught = true
           continue
         }
 
-        const dirX = dx / distance
-        const dirY = dy / distance
+        switch (hunter.state) {
+          case HunterState.Hunting:
+            advance(grid, hunter, SPEED_HUNTING, step)
+            break
 
-        hunter.facingX = dirX
-        hunter.facingY = dirY
+          case HunterState.Searching: {
+            hunter.patience -= step
 
-        // Straight-line pursuit with per-axis sliding, the same as the player's
-        // movement. Real pathfinding is the obvious next step; without it they get
-        // stuck on the corners of buildings, which is a limitation rather than a
-        // behaviour and should not be mistaken for one.
-        const travel = hunter.speed * step
-        const nextX = hunter.x + dirX * travel
-        if (!blocked(grid, nextX, hunter.y, 0.3)) hunter.x = nextX
+            const toTarget = Math.hypot(hunter.targetX - hunter.x, hunter.targetY - hunter.y)
+            if (toTarget < ARRIVED) {
+              // Arrived at where you were and found nothing. Casts about nearby
+              // rather than standing still, so a search sweeps an area.
+              hunter.targetX = hunter.x + (rng.next() - 0.5) * 12
+              hunter.targetY = hunter.y + (rng.next() - 0.5) * 12
+            }
 
-        const nextY = hunter.y + dirY * travel
-        if (!blocked(grid, hunter.x, nextY, 0.3)) hunter.y = nextY
+            if (hunter.patience <= 0) hunter.state = HunterState.Wandering
+            advance(grid, hunter, SPEED_SEARCHING, step)
+            break
+          }
 
-        hunter.moving = true
+          case HunterState.Suspicious:
+          case HunterState.Wandering: {
+            const toTarget = Math.hypot(hunter.targetX - hunter.x, hunter.targetY - hunter.y)
+            if (toTarget < ARRIVED) {
+              hunter.targetX = hunter.x + (rng.next() - 0.5) * 20
+              hunter.targetY = hunter.y + (rng.next() - 0.5) * 20
+            }
+            advance(grid, hunter, SPEED_WANDERING, step)
+            break
+          }
+        }
       }
 
       return caught
@@ -175,7 +306,8 @@ export function createHunterPack(): HunterPack {
 
     clear(): void {
       hunters.length = 0
-      untilSpawn = 4
+      untilSpawn = 8
+      noticedFor = 0
     },
   }
 }

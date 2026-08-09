@@ -53,6 +53,8 @@ export function renderVitals(
   height: number,
   vitals: Vitals,
   time: number,
+  /** Seconds left on the cue that fires when something first notices you. */
+  noticed = 0,
 ): void {
   const { health, power, strainFor } = vitals
 
@@ -83,6 +85,14 @@ export function renderVitals(
   if (power < POWER_VISIBLE_BELOW) {
     const empty = (POWER_VISIBLE_BELOW - power) / POWER_VISIBLE_BELOW
     vignette(ctx, width, height, empty * 0.5, 'rgba(6, 16, 44, ALPHA)')
+  }
+
+  if (noticed > 0) {
+    // Being hunted should be knowable at the moment it starts, not discovered
+    // when something is already on you. A brief closing of the edges, distinct
+    // from the health vignette by being colder and far quicker to fade.
+    const t = Math.min(1, noticed / 1.6)
+    vignette(ctx, width, height, t * t * 0.7, 'rgba(10, 10, 16, ALPHA)')
   }
 
   if (strainFor > 0) {
