@@ -72,6 +72,47 @@ interface Standing {
   readonly sprite: HTMLCanvasElement
   readonly x: number
   readonly y: number
+  readonly alpha: number
+}
+
+/**
+ * Wall cutaway.
+ *
+ * The camera looks down from the north-west, so the south and east walls of any
+ * building stand between it and everything inside — including the character. Left
+ * alone, walking into a room means disappearing behind its own front wall.
+ *
+ * Walls nearer the camera than the character fade as they approach them, which
+ * opens a soft window into the room that follows them around. They fade rather than
+ * vanish so the room's shape stays readable; a wall that disappears entirely makes
+ * it hard to tell where you are.
+ */
+
+/** Within this distance a wall is at its most transparent. */
+const CUTAWAY_INNER = 1.2
+
+/** Beyond this distance walls are untouched. */
+const CUTAWAY_OUTER = 3.5
+
+/** How much of a faded wall still shows. */
+const CUTAWAY_MIN_ALPHA = 0.22
+
+/**
+ * Opacity for a wall whose midpoint is at (midX, midY), given where the actor is.
+ *
+ * @returns 1 for walls that cannot be in the way, ramping to {@link CUTAWAY_MIN_ALPHA}.
+ */
+export function cutawayOpacity(midX: number, midY: number, actorX: number, actorY: number): number {
+  // Only walls nearer the camera than the actor can hide them. Depth in this
+  // projection is x + y, so anything at or below the actor's is behind them.
+  if (midX + midY <= actorX + actorY) return 1
+
+  const distance = Math.hypot(midX - actorX, midY - actorY)
+  if (distance >= CUTAWAY_OUTER) return 1
+  if (distance <= CUTAWAY_INNER) return CUTAWAY_MIN_ALPHA
+
+  const t = (distance - CUTAWAY_INNER) / (CUTAWAY_OUTER - CUTAWAY_INNER)
+  return CUTAWAY_MIN_ALPHA + (1 - CUTAWAY_MIN_ALPHA) * t
 }
 
 export function renderScene(
@@ -120,6 +161,11 @@ export function renderScene(
         // half to the right. Both stand WALL_H tall from their lowest point.
         const left = side === WallSide.West ? sx - WALL_W : sx
 
+        // Midpoint of the boundary the wall sits on, which is what the cutaway
+        // measures against — not the tile's centre.
+        const midX = side === WallSide.West ? x : x + 0.5
+        const midY = side === WallSide.West ? y + 0.5 : y
+
         standing.push({
           // Walls sit on a tile's far boundaries, so they draw fractionally before
           // anything standing in that tile — that is what puts the character
@@ -128,6 +174,7 @@ export function renderScene(
           sprite,
           x: Math.round(ox + left),
           y: Math.round(oy + sy - WALL_H + TILE_H / 2),
+          alpha: cutawayOpacity(midX, midY, actor.x, actor.y),
         })
       }
     }
@@ -147,14 +194,18 @@ export function renderScene(
       sprite: person,
       x: Math.round(ox + sx - PERSON_ANCHOR.x),
       y: Math.round(oy + sy - PERSON_ANCHOR.y - bob),
+      alpha: 1,
     })
   }
 
   standing.sort((a, b) => a.sort - b.sort)
 
   for (const item of standing) {
+    ctx.globalAlpha = item.alpha
     ctx.drawImage(item.sprite, item.x, item.y)
   }
+
+  ctx.globalAlpha = 1
 }
 
 /** Minimal on-screen readout. Replaced by a real HUD once there is something to report. */
