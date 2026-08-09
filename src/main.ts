@@ -1,7 +1,9 @@
+import { createAudio } from '@/core/audio'
 import { createInput } from '@/core/input'
 import { createClock } from '@/core/time'
 import { startLoop } from '@/core/loop'
 import { createActor } from '@/entity/actor'
+import { createFootsteps } from '@/entity/footsteps'
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
@@ -19,6 +21,7 @@ import {
 } from '@/render/sprites'
 import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
 import { createSandbox, SPAWN } from '@/world/sandbox'
+import { tileDef } from '@/world/tiles'
 
 /**
  * Entry point: builds the world, wires input to the simulation, and starts the loop.
@@ -161,6 +164,39 @@ if (import.meta.env.DEV) {
   Object.defineProperty(window, 'game', { value: { grid, actor, camera, input, clock } })
 }
 
+// Sound. Only grass exists so far; every other surface is silent until its
+// recording arrives, which is quieter than substituting the wrong one.
+const audio = createAudio()
+const footsteps = createFootsteps()
+
+void audio.load({
+  'footstep-grass': [
+    '/audio/footstep-grass-01.wav',
+    '/audio/footstep-grass-02.wav',
+    '/audio/footstep-grass-03.wav',
+    '/audio/footstep-grass-04.wav',
+    '/audio/footstep-grass-05.wav',
+    '/audio/footstep-grass-06.wav',
+    '/audio/footstep-grass-07.wav',
+    '/audio/footstep-grass-08.wav',
+    '/audio/footstep-grass-09.wav',
+    '/audio/footstep-grass-10.wav',
+    '/audio/footstep-grass-11.wav',
+    '/audio/footstep-grass-12.wav',
+    '/audio/footstep-grass-13.wav',
+    '/audio/footstep-grass-14.wav',
+    '/audio/footstep-grass-15.wav',
+  ],
+})
+
+// Browsers refuse to play anything until the user has interacted with the page,
+// so the context is resumed from the first input rather than at load.
+for (const event of ['keydown', 'pointerdown'] as const) {
+  window.addEventListener(event, () => {
+    audio.resume()
+  })
+}
+
 // One scratch canvas for the lighting pass, reused every frame. Allocating one per
 // frame is the difference between the effect being free and being the most
 // expensive thing in the renderer.
@@ -174,7 +210,21 @@ startLoop(
     clock.advance(step)
 
     const direction = input.direction()
+    const wasX = actor.x
+    const wasY = actor.y
+
     moveActor(actor, grid, direction.x, direction.y, step, input.running())
+
+    if (footsteps.update(actor, wasX, wasY)) {
+      const surface = tileDef(grid.at(Math.floor(actor.x), Math.floor(actor.y))).name
+
+      // Pitch and volume wander slightly on every step. Even with fifteen
+      // recordings, identical playback of the same one is instantly recognisable.
+      audio.play(`footstep-${surface}`, {
+        rate: 0.92 + Math.random() * 0.16,
+        volume: (actor.running ? 0.85 : 0.6) * (0.85 + Math.random() * 0.3),
+      })
+    }
     followCamera(camera, actor.x, actor.y, step)
   },
   () => {

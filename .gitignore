@@ -29,3 +29,6 @@ npm-debug.log*
 # Character art pending licence confirmation — see ATTRIBUTION.md.
 # Remove this entry once its origin is known.
 public/sprites/
+
+# Audio pending licence confirmation — see ATTRIBUTION.md.
+public/audio/
