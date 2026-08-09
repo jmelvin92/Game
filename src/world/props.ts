@@ -78,7 +78,7 @@ export interface PropLight {
 }
 
 const LIGHTS: Partial<Readonly<Record<PropId, PropLight>>> = {
-  [Prop.LampPost]: { radius: 4.6, strength: 1, height: 1.6 },
+  [Prop.LampPost]: { radius: 7.5, strength: 1, height: 1.6 },
 }
 
 export function propLight(id: PropId): PropLight | undefined {

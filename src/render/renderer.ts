@@ -360,7 +360,7 @@ export function renderScene(
         y: oy + sy - emitted.height * TILE_Z,
         radius: emitted.radius * TILE_W * 0.5,
         strength,
-        colour: 'rgba(255, 196, 118, 0.75)',
+        colour: 'rgba(255, 190, 112, ALPHA)',
       })
     }
   }
@@ -375,9 +375,9 @@ export function renderScene(
     lights.push({
       x: ox + sx,
       y: oy + sy - TILE_Z * 0.55,
-      radius: TILE_W * 3.4,
+      radius: TILE_W * 4.2,
       strength: 1,
-      colour: 'rgba(226, 236, 255, 0.55)',
+      colour: 'rgba(222, 233, 255, ALPHA)',
       direction: Math.atan2(screenDirY, screenDirX),
       cone: Math.PI / 3.2,
     })
@@ -387,9 +387,9 @@ export function renderScene(
     lights.push({
       x: ox + sx,
       y: oy + sy - TILE_Z * 0.3,
-      radius: TILE_W * 0.85,
+      radius: TILE_W * 1.15,
       strength: 0.65,
-      colour: 'rgba(200, 214, 245, 0.5)',
+      colour: 'rgba(198, 212, 244, ALPHA)',
     })
   }
 

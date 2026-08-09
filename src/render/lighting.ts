@@ -19,6 +19,8 @@ export interface Light {
   readonly radius: number
   /** 0 to 1. Scales both the hole cut in the darkness and the glow. */
   readonly strength: number
+  /** A colour with the literal token `ALPHA` where its opacity goes, so the
+      falloff curve can vary it per gradient stop. */
   readonly colour: string
   /** Present for directional lights such as a torch. Radians, screen space. */
   readonly direction?: number
@@ -81,26 +83,74 @@ export function flicker(seed: number, time: number): number {
   return 0.86 + Math.sin(t * 5.1) * 0.09
 }
 
-/** Traces the lit area of a light — a disc, or a cone if it has a direction. */
-function lightPath(ctx: CanvasRenderingContext2D, light: Light): void {
-  ctx.beginPath()
+/**
+ * How much light reaches a given fraction of the way to a light's edge.
+ *
+ * A straight ramp from full to nothing — which is what a two-stop gradient gives
+ * you — leaves a visible rim where it hits zero, and the eye reads that rim as the
+ * edge of a spotlight rather than as light. Real falloff is steep near the source
+ * and then trails off for a long way, so most of the radius is spent on a faint
+ * tail nobody can point at.
+ */
+function falloff(t: number): number {
+  const inverseSquare = 1 / (1 + 14 * t * t)
+  // Forced to exactly zero at the rim, or the gradient still ends on a step.
+  return inverseSquare * (1 - t) * (1 - t)
+}
 
+/** Number of stops used to approximate the curve. Enough to look continuous. */
+const FALLOFF_STOPS = 10
+
+function fade(
+  ctx: CanvasRenderingContext2D,
+  light: Light,
+  peak: number,
+  colour: (alpha: number) => string,
+): CanvasGradient {
+  const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius)
+
+  for (let i = 0; i <= FALLOFF_STOPS; i++) {
+    const t = i / FALLOFF_STOPS
+    gradient.addColorStop(t, colour(peak * falloff(t)))
+  }
+
+  return gradient
+}
+
+/**
+ * Fills a light's shape.
+ *
+ * Cone lights are painted as several nested cones rather than one, narrowing and
+ * brightening toward the middle. A single cone has hard angular edges, which look
+ * like a wedge cut out of the dark instead of a beam.
+ */
+function paintLight(
+  ctx: CanvasRenderingContext2D,
+  light: Light,
+  peak: number,
+  colour: (alpha: number) => string,
+): void {
   if (light.direction === undefined || light.cone === undefined) {
+    ctx.fillStyle = fade(ctx, light, peak, colour)
+    ctx.beginPath()
     ctx.arc(light.x, light.y, light.radius, 0, Math.PI * 2)
+    ctx.fill()
     return
   }
 
-  const half = light.cone / 2
-  ctx.moveTo(light.x, light.y)
-  ctx.arc(light.x, light.y, light.radius, light.direction - half, light.direction + half)
-  ctx.closePath()
-}
+  const layers = 4
+  for (let i = 0; i < layers; i++) {
+    const t = i / (layers - 1)
+    // Widest layer is faintest, so the beam has soft shoulders rather than a rim.
+    const half = (light.cone / 2) * (1.15 - t * 0.55)
+    ctx.fillStyle = fade(ctx, light, peak * (0.32 + t * 0.68) * (1 / layers) * 2.1, colour)
 
-function fade(ctx: CanvasRenderingContext2D, light: Light, inner: string, outer: string) {
-  const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.radius)
-  gradient.addColorStop(0, inner)
-  gradient.addColorStop(1, outer)
-  return gradient
+    ctx.beginPath()
+    ctx.moveTo(light.x, light.y)
+    ctx.arc(light.x, light.y, light.radius, light.direction - half, light.direction + half)
+    ctx.closePath()
+    ctx.fill()
+  }
 }
 
 /**
@@ -147,14 +197,12 @@ export function renderLighting(
   // see past rather than a hard circle of daylight.
   shade.globalCompositeOperation = 'destination-out'
   for (const light of lights) {
-    shade.fillStyle = fade(
+    paintLight(
       shade,
       light,
-      `rgba(255, 255, 255, ${String(0.95 * light.strength)})`,
-      'rgba(255, 255, 255, 0)',
+      0.97 * light.strength,
+      (alpha) => `rgba(255, 255, 255, ${String(alpha)})`,
     )
-    lightPath(shade, light)
-    shade.fill()
   }
 
   ctx.drawImage(buffer, 0, 0)
@@ -164,10 +212,9 @@ export function renderLighting(
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   for (const light of lights) {
-    ctx.globalAlpha = 0.4 * light.strength * darkness
-    ctx.fillStyle = fade(ctx, light, light.colour, 'rgba(0, 0, 0, 0)')
-    lightPath(ctx, light)
-    ctx.fill()
+    paintLight(ctx, light, 0.5 * light.strength * darkness, (alpha) =>
+      light.colour.replace('ALPHA', alpha.toFixed(3)),
+    )
   }
   ctx.restore()
 }

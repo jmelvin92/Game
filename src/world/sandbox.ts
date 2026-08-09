@@ -133,11 +133,12 @@ export function createSandbox(seed: number = SANDBOX_SEED): Grid {
 /**
  * Tiles between lamp posts along a pavement.
  *
- * Deliberately sparse. Evenly lit streets read as a functioning town; long dark
- * stretches with the occasional pool of light do not, and the gaps are doing more
- * for the atmosphere than the lamps are.
+ * Deliberately very sparse. Evenly lit streets read as a functioning town; long
+ * dark stretches with a rare pool of light do not, and the gaps are doing more for
+ * the atmosphere than the lamps are. Each lamp reaches further to compensate, so
+ * the ones that survive feel like landmarks rather than street furniture.
  */
-const LAMP_SPACING = 23
+const LAMP_SPACING = 47
 
 /**
  * How lamps have fared. Weighted heavily toward failure — a working street light
