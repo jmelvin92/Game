@@ -1,5 +1,6 @@
 import type { Actor } from '@/entity/actor'
 import type { Hunter } from '@/entity/hunters'
+import type { Sun } from '@/render/daylight'
 import { cameraOffset, type Camera } from '@/render/camera'
 import { depth, screenToWorld, TILE_H, TILE_W, TILE_Z, worldToScreen } from '@/render/iso'
 import {
@@ -49,6 +50,10 @@ export interface Scene {
   readonly power: number
   /** Everything hunting the player, drawn and sorted alongside them. */
   readonly hunters: readonly Hunter[]
+  /** The sun, for shadows and shading. */
+  readonly sun: Sun
+  /** Scratch canvas for the shadow pass, reused between frames. */
+  readonly shadowBuffer: HTMLCanvasElement
 }
 
 interface Bounds {
@@ -90,6 +95,8 @@ interface Standing {
   readonly x: number
   readonly y: number
   readonly alpha: number
+  /** 0 to 1. Darkens the sprite, for surfaces turned away from the sun. */
+  readonly shade?: number
 }
 
 /**
@@ -174,6 +181,82 @@ export function renderScene(
     }
   }
 
+  // Shadows, before anything standing.
+  //
+  // Drawn into their own buffer at full strength and composited once, rather than
+  // straight onto the scene. Overlapping shadows would otherwise stack into black
+  // where a tree stands beside a building, which is both wrong and very obvious.
+  if (scene.sun.shadowAlpha > 0.002 && scene.sun.elevation > 0.01) {
+    const { sun, shadowBuffer } = scene
+
+    if (shadowBuffer.width !== Math.ceil(width) || shadowBuffer.height !== Math.ceil(height)) {
+      shadowBuffer.width = Math.ceil(width)
+      shadowBuffer.height = Math.ceil(height)
+    }
+
+    const shade = shadowBuffer.getContext('2d')
+    if (shade !== null) {
+      shade.clearRect(0, 0, width, height)
+      shade.fillStyle = '#000'
+
+      // Buildings: the footprint, offset by the building's height. Cast from the
+      // roof rather than the walls, because the roof is the shape that blocks the
+      // sun and it is one quad per tile instead of several.
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          if (grid.roofAt(x, y) === 0) continue
+
+          // Every tile of the footprint casts, not just the edges. Casting only
+          // from the perimeter seems like a saving and is not: the offset shadow
+          // comes out as a hollow ring rather than a solid shape, because the
+          // middle of the footprint is exactly what fills the middle of its shadow.
+          const height3d = grid.roofBaseAt(x, y) + grid.roofHeightAt(x, y) * 0.2
+          const { sx, sy } = worldToScreen(x, y)
+
+          shade.save()
+          shade.translate(ox + sx + sun.shadowX * height3d, oy + sy + sun.shadowY * height3d)
+          shade.beginPath()
+          shade.moveTo(0, 0)
+          shade.lineTo(TILE_W / 2, TILE_H / 2)
+          shade.lineTo(0, TILE_H)
+          shade.lineTo(-TILE_W / 2, TILE_H / 2)
+          shade.closePath()
+          shade.fill()
+          shade.restore()
+        }
+      }
+
+      // Props: the sprite itself, flattened toward the ground and leaned in the
+      // direction the light is going. Reusing the sprite means a tree's shadow is
+      // tree-shaped for free, which no amount of drawn shapes would match.
+      for (let y = bounds.minY; y <= bounds.maxY; y++) {
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+          const prop = grid.propAt(x, y)
+          if (prop === Prop.None) continue
+
+          const variants = sprites.props.get(prop)
+          const sprite = variants?.[grid.propVariantAt(x, y) % Math.max(1, variants.length)]
+          if (sprite === undefined) continue
+
+          const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
+
+          shade.save()
+          shade.translate(ox + sx, oy + sy)
+          // Shear leans the sprite over; the vertical squash lays it on the ground.
+          shade.transform(1, 0, sun.shadowX / 26, sun.shadowY / 26, 0, 0)
+          shade.globalAlpha = 1
+          shade.drawImage(sprite, -PROP_ANCHOR.x, -PROP_ANCHOR.y)
+          shade.restore()
+        }
+      }
+
+      ctx.save()
+      ctx.globalAlpha = sun.shadowAlpha
+      ctx.drawImage(shadowBuffer, 0, 0)
+      ctx.restore()
+    }
+  }
+
   // Anything with height overlaps its neighbours, so it must be drawn back to front.
   // The character is sorted in among the walls rather than drawn over them, which is
   // what lets it pass behind a building instead of floating in front of it.
@@ -201,6 +284,10 @@ export function renderScene(
         const midY = side === WallSide.West ? y + 0.5 : y
         const alpha = cutawayOpacity(midX, midY, actor.x, actor.y)
 
+        // One face of every building is turned away from the sun. Shading it is
+        // most of what makes a box read as solid rather than as flat panels.
+        const backlit = side === (scene.sun.shadowX > 0 ? WallSide.West : WallSide.North)
+
         // A wall segment is about a metre of height, so a building is several
         // stacked. Drawing bottom upward means each course overlaps the one below
         // it, hiding the seam where they meet.
@@ -217,6 +304,7 @@ export function renderScene(
             x: Math.round(ox + left),
             y: Math.round(oy + sy - WALL_H + TILE_H / 2 - level * TILE_Z),
             alpha,
+            shade: backlit ? scene.sun.backlitShade : 0,
           })
         }
       }
@@ -416,6 +504,16 @@ export function renderScene(
   for (const item of standing) {
     ctx.globalAlpha = item.alpha
     ctx.drawImage(item.sprite, item.x, item.y)
+
+    // Shaded faces get a second pass masked to the sprite, so only the wall
+    // darkens and not the gap around it.
+    if (item.shade !== undefined && item.shade > 0.002) {
+      ctx.globalAlpha = item.alpha * item.shade
+      ctx.globalCompositeOperation = 'source-atop'
+      ctx.fillStyle = '#0a0c14'
+      ctx.fillRect(item.x, item.y, item.sprite.width, item.sprite.height)
+      ctx.globalCompositeOperation = 'source-over'
+    }
   }
 
   ctx.globalAlpha = 1

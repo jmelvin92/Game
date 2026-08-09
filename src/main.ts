@@ -10,7 +10,8 @@ import { canChannel, channel, createVitals, updateVitals } from '@/entity/vitals
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
-import { darknessAt, renderLighting, skyTint } from '@/render/lighting'
+import { gradeDaylight, sunAt } from '@/render/daylight'
+import { darknessAt, renderLighting } from '@/render/lighting'
 import { drawHud, renderScene } from '@/render/renderer'
 import { renderVitals } from '@/render/vitalsOverlay'
 import {
@@ -329,7 +330,7 @@ if (import.meta.env.DEV) {
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
   Object.defineProperty(window, 'game', {
-    value: { grid, actor, camera, input, clock, vitals, hunters },
+    value: { grid, actor, camera, input, clock, vitals, hunters, sunAt },
   })
 }
 
@@ -358,6 +359,7 @@ for (const event of ['keydown', 'pointerdown'] as const) {
 // frame is the difference between the effect being free and being the most
 // expensive thing in the renderer.
 const lightBuffer = document.createElement('canvas')
+const shadowBuffer = document.createElement('canvas')
 
 let elapsed = 0
 
@@ -418,6 +420,8 @@ startLoop(
   () => {
     applyTransform()
 
+    const sun = sunAt(clock.fraction)
+
     // The renderer works in world-space pixels. At 2x the viewport shows half as
     // much of it, so it is told the smaller size and never learns about zoom.
     const logicalWidth = viewWidth / zoom
@@ -433,7 +437,14 @@ startLoop(
       torch: torchOn,
       power: vitals.power,
       hunters: hunters.hunters,
+      sun,
+      shadowBuffer,
     })
+
+    // Daylight grading first, then the night pass over the top. They never both
+    // do much at once — the sun is gone by the time darkness matters — but dusk
+    // has a little of each and looks better for the overlap.
+    gradeDaylight(ctx, logicalWidth, logicalHeight, sun)
 
     renderLighting(
       ctx,
@@ -441,7 +452,7 @@ startLoop(
       logicalWidth,
       logicalHeight,
       darknessAt(clock.fraction),
-      skyTint(clock.fraction),
+      { colour: 'rgb(0, 0, 0)', alpha: 0 },
       lights,
     )
 
