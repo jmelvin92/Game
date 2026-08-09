@@ -7,7 +7,7 @@ import { createActor } from '@/entity/actor'
 import { createInventory } from '@/entity/inventory'
 import { createFootsteps } from '@/entity/footsteps'
 import { createHunterPack } from '@/entity/hunters'
-import { canChannel, channel, createVitals, updateVitals } from '@/entity/vitals'
+import { canLoan, createVitals, freeSlots, strain, updateVitals } from '@/entity/vitals'
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
@@ -28,7 +28,6 @@ import {
   type AnimationId,
 } from '@/render/sprites'
 import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
-import { drainCharges } from '@/world/grid'
 import { createSandbox, SANDBOX_SEED, SPAWN } from '@/world/sandbox'
 import { deviceDef, LampCondition, nearestDevice, Prop } from '@/world/props'
 import { tileDef } from '@/world/tiles'
@@ -340,13 +339,20 @@ window.addEventListener('keydown', (event) => {
     // as broken and refuse everything.
     if (device.prop === Prop.LampPost && device.condition === LampCondition.Broken) return
 
-    // Already running: topping up would let one device be kept alive indefinitely
-    // for the price of a trickle, which is not what a charge is meant to be.
-    if (grid.chargeAt(device.x, device.y) > 0) return
-    if (!canChannel(vitals, definition.cost)) return
+    // E is a switch now, not a payment. A burning device hands its loaned slot
+    // straight back; a dark one takes a slot for as long as it burns. Turning a
+    // light off is the one way to get yourself back, so it must always work.
+    if (grid.chargeAt(device.x, device.y) > 0) {
+      grid.setCharge(device.x, device.y, 0)
+      return
+    }
 
-    grid.setCharge(device.x, device.y, definition.duration)
-    channel(vitals, definition.cost)
+    // The last slot never leaves the body — the gift does not do suicide by
+    // streetlight — so this refuses when only one bar remains free.
+    if (!canLoan(vitals, grid.charged().size)) return
+
+    grid.setCharge(device.x, device.y, 1)
+    strain(vitals)
   }
 })
 
@@ -428,8 +434,7 @@ startLoop(
 
     const darkness = darknessAt(clock.fraction)
 
-    updateVitals(vitals, step, 1 - darkness)
-    drainCharges(grid, step)
+    updateVitals(vitals, step)
 
     if (hunters.update(grid, actor, torchOn, step, darkness, playRng)) die()
 
@@ -451,7 +456,6 @@ startLoop(
     }
 
     // The gift running the body down is its own end, separate from being caught.
-    if (vitals.health <= 0) die()
 
     const direction = input.direction()
     const wasX = actor.x
@@ -489,7 +493,7 @@ startLoop(
       time: elapsed,
       dayFraction: clock.fraction,
       torch: torchOn,
-      power: vitals.power,
+      power: freeSlots(vitals, grid.charged().size) / vitals.slots,
       hunters: hunters.hunters,
       sun,
       shadowBuffer,
@@ -520,7 +524,14 @@ startLoop(
     const ratio = window.devicePixelRatio || 1
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
-    renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed, hunters.noticedFor)
+    renderVitals(
+      ctx,
+      viewWidth,
+      viewHeight,
+      { total: vitals.slots, loaned: grid.charged().size, strainFor: vitals.strainFor },
+      elapsed,
+      hunters.noticedFor,
+    )
     if (backpackShown > 0.01) {
       renderInventory(ctx, viewWidth, viewHeight, inventory, backpackShown)
     }

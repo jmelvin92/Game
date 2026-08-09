@@ -24,24 +24,22 @@ The world's power is dead — completely. Nothing is lit that the player has not
 themselves, which is why the streets are dark and every lamp starts cold.
 
 The character has a supernatural gift: they can energise anything that runs on
-electricity. Street lamps today; jukeboxes, vehicles, refrigerators later. **The
-gift is the game's currency** — it is spent, not repaired with. Devices differ only
-in what they cost, how long they hold a charge, and what they do while lit, so
-adding one is a table entry rather than a new mechanic.
+electricity. Street lamps today; jukeboxes, vehicles, refrigerators later. Devices
+differ only in what they take and what they do while lit, so adding one is a table
+entry rather than a new mechanic.
 
-Three costs bind it. Channelling drains power, which **only daylight restores**; it
-costs health; and it permanently lowers the **ceiling** on how much health can ever
-be held again. Rest and medicine — neither built — restore health only up to that
-ceiling.
+**Health is five discrete slots, and the gift _loans_ them rather than spends
+them.** Lighting a device commits one slot for as long as it burns; switching it
+off hands the slot straight back. The player is a walking power grid — the city is
+lit with pieces of them — and the last slot can never be loaned, because health at
+zero is death. This replaced an earlier continuous-health model with a permanent
+"ceiling" cost per use (see git history of `src/entity/vitals.ts`): Joshua wanted
+it gamified and less permanent — "you loan your health to light the city."
 
-The ceiling is what makes the gift a bargain rather than a resource: every device
-you wake costs a sliver of your life. It falls slowly, roughly half a percent per
-street lamp, so a night is barely felt and a fortnight is unmistakable. That single
-number decides how long a run lasts and is provisional until something else pins
-that down.
-
-It is an ordinary value that moves both ways, not a one-way count, because Joshua
-wants a late-game way to win some of it back.
+There is deliberately no ledger of what is loaned where: a lit device IS a loan,
+so the count of lit tiles (`grid.charged().size`) is the count of slots out. Rare
+exploration finds are planned to grant extra slots (`grantSlot` exists, nothing
+spawns one yet).
 
 Two threats are planned and **neither is built**:
 
@@ -61,14 +59,15 @@ it advertises. Do not quietly resolve that tension in any one direction.
 - **What carries over when the player dies.** Joshua wants milestones with no
   ending, and also expects death. Something has to persist — repaired devices, map
   knowledge, reclaimed districts — or the milestones never accumulate.
-- **What fills the daytime.** Recharging is passive; scouting and repairing devices
-  are the obvious candidates but nothing is built.
-- **What restores health up to the ceiling.** Rest in a secure shelter is the
-  strongest candidate, and has a useful tension built in: sleeping burns daylight,
-  which is the only thing that restores power, so rest and the gift compete for the
-  same hours. Scavenged medicine is the obvious emergency source.
-- **How long a run should last.** Nothing pins this down, and the ceiling's rate of
-  loss cannot be tuned properly until it does.
+- **What fills the daytime.** Scouting, looting and repairing devices are the
+  obvious candidates but nothing is built. Daylight no longer recharges anything —
+  the loan model removed the power meter — so the day currently has no mechanical
+  role at all, which is a gap.
+- **What, besides loaning, threatens the slots.** Hunters kill outright on touch
+  today. If anything ever deals partial damage, the interaction with loaned slots
+  (does a wound call a loan back? does a lamp go dark when you are hurt?) is
+  undesigned, and it is a rich vein — decide it with Joshua, not alone.
+- **How long a run should last.** Nothing pins this down.
 
 ### The line to hold
 

@@ -51,11 +51,15 @@ export interface Grid {
   setBuilding(x: number, y: number, id: number): void
 
   /**
-   * Seconds of charge left in the device on this tile; 0 when dark.
+   * Whether the device on this tile is burning: >0 lit, 0 dark.
    *
-   * Stored in the world rather than in a list of active devices, because a charge
-   * is a fact about a place: it has to survive being saved, and anything that
-   * eventually cares whether somewhere is lit needs to ask the map, not a system.
+   * Devices hold a loaned health slot while lit and burn until switched off,
+   * so this is a flag in seconds' clothing — the unit survives from when
+   * charges drained, and stays because a future device may yet meter time.
+   *
+   * Stored in the world rather than in a list of active devices, because being
+   * lit is a fact about a place: it has to survive being saved, and anything
+   * that cares whether somewhere is lit asks the map, not a system.
    */
   chargeAt(x: number, y: number): number
   setCharge(x: number, y: number, seconds: number): void
@@ -222,27 +226,5 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
       roofHeights[y * width + x] = height
       roofBases[y * width + x] = base
     },
-  }
-}
-
-/**
- * Runs every charged device down by one step.
- *
- * A full sweep of the map each frame rather than a list of what is active. At this
- * size it is far cheaper than the bookkeeping a list would need, and it cannot
- * drift out of step with the map the way a parallel list can.
- */
-export function drainCharges(grid: Grid, step: number): void {
-  const charged = grid.charged()
-  if (charged.size === 0) return
-
-  // Copied because setCharge removes entries as they expire, and a handful of lit
-  // devices makes the allocation irrelevant. Sweeping the whole map instead was
-  // half a million tile reads a frame at the current size — invisible on a small
-  // map and the most expensive thing in the update loop on a large one.
-  for (const index of [...charged]) {
-    const x = index % grid.width
-    const y = (index - x) / grid.width
-    grid.setCharge(x, y, grid.chargeAt(x, y) - step)
   }
 }

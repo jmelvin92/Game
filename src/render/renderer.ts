@@ -461,9 +461,8 @@ export function renderScene(
       if (charge <= 0) continue
 
       // Damaged fittings stutter the entire time they burn, each on its own
-      // rhythm so a street never blinks in unison. And every device gutters as its
-      // charge runs out, which is the only warning that it is about to go.
-      const dying = Math.min(1, charge / 12)
+      // rhythm so a street never blinks in unison. Devices no longer gutter out
+      // — a loan burns steadily until it is called back.
       // Condition lives in the variant for lamps alone; furniture keeps its
       // facing there, and a bed should not stutter like a failing tube.
       const damaged =
@@ -475,7 +474,7 @@ export function renderScene(
         x: ox + sx,
         y: oy + sy - emitted.height * TILE_Z,
         radius: emitted.radius * TILE_W * 0.5,
-        strength: emitted.strength * stutter * dying,
+        strength: emitted.strength * stutter,
         colour: emitted.colour ?? 'rgba(255, 190, 112, ALPHA)',
       })
     }

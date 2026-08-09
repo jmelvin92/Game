@@ -1,108 +1,67 @@
 import { describe, expect, it } from 'vitest'
+
 import {
-  canChannel,
-  channel,
+  canLoan,
   createVitals,
-  heal,
-  restoreCeiling,
+  freeSlots,
+  grantSlot,
+  STARTING_SLOTS,
+  strain,
   updateVitals,
 } from '@/entity/vitals'
 
-/**
- * The ceiling is the whole shape of a run — it is what makes the gift a bargain
- * rather than a resource. These pin the rules that make that true, because each one
- * would be easy to break by accident and none of them are visible from a screenshot.
- */
-describe('the ceiling', () => {
-  it('falls a little every time the gift is used', () => {
+describe('health slots', () => {
+  it('start at five, all free', () => {
     const vitals = createVitals()
-    const before = vitals.ceiling
-
-    channel(vitals, 0.16)
-
-    expect(vitals.ceiling).toBeLessThan(before)
-    // A sliver, not a chunk: one lamp should be barely felt.
-    expect(before - vitals.ceiling).toBeLessThan(0.01)
+    expect(vitals.slots).toBe(STARTING_SLOTS)
+    expect(freeSlots(vitals, 0)).toBe(STARTING_SLOTS)
   })
 
-  it('takes many uses to halve, so a single night is survivable', () => {
+  it('are loaned out one per burning device', () => {
     const vitals = createVitals()
-    for (let i = 0; i < 40; i++) {
-      vitals.power = 1
-      channel(vitals, 0.16)
-    }
-
-    expect(vitals.ceiling).toBeGreaterThan(0.7)
+    expect(freeSlots(vitals, 3)).toBe(STARTING_SLOTS - 3)
   })
 
-  it('caps health, so rest can never undo what the gift took', () => {
+  it('never loan the last one', () => {
     const vitals = createVitals()
-    for (let i = 0; i < 10; i++) {
-      vitals.power = 1
-      channel(vitals, 0.16)
-    }
 
-    heal(vitals, 1)
-
-    expect(vitals.health).toBe(vitals.ceiling)
-    expect(vitals.health).toBeLessThan(1)
+    // Four of five can go out; the fifth stays home.
+    expect(canLoan(vitals, 0)).toBe(true)
+    expect(canLoan(vitals, STARTING_SLOTS - 2)).toBe(true)
+    expect(canLoan(vitals, STARTING_SLOTS - 1)).toBe(false)
+    expect(canLoan(vitals, STARTING_SLOTS)).toBe(false)
   })
 
-  it('can be won back, which is what the late game is meant to allow', () => {
+  it('come back the moment the loan ends', () => {
+    // The loan count is derived from the world, so "the moment" is literal:
+    // there is no ledger to reconcile, only a smaller count to pass in.
     const vitals = createVitals()
-    for (let i = 0; i < 20; i++) {
-      vitals.power = 1
-      channel(vitals, 0.16)
-    }
-    const worn = vitals.ceiling
-
-    restoreCeiling(vitals, 0.1)
-
-    expect(vitals.ceiling).toBeGreaterThan(worn)
-    expect(vitals.ceiling).toBeLessThanOrEqual(1)
+    expect(freeSlots(vitals, 4)).toBe(1)
+    expect(freeSlots(vitals, 3)).toBe(2)
   })
 
-  it('never falls far enough to end a run on its own', () => {
+  it('grow when a rare find grants one', () => {
     const vitals = createVitals()
-    for (let i = 0; i < 2000; i++) {
-      vitals.power = 1
-      vitals.health = vitals.ceiling
-      channel(vitals, 0.16)
-    }
+    grantSlot(vitals)
 
-    expect(vitals.ceiling).toBeGreaterThan(0.1)
+    expect(vitals.slots).toBe(STARTING_SLOTS + 1)
+    // The new slot extends what can be loaned, not just what can be held.
+    expect(canLoan(vitals, STARTING_SLOTS - 1)).toBe(true)
   })
-})
 
-describe('the gift', () => {
-  it('refuses when there is not enough power', () => {
+  it('never report negative free slots', () => {
+    // More loans than slots cannot happen through canLoan, but a stale save or
+    // a bug should degrade to zero rather than to nonsense.
     const vitals = createVitals()
-    vitals.power = 0.05
-
-    expect(canChannel(vitals, 0.16)).toBe(false)
+    expect(freeSlots(vitals, 99)).toBe(0)
   })
 
-  it('costs more of the body for a bigger draw', () => {
-    const lamp = createVitals()
-    const vehicle = createVitals()
+  it('feel the strain of channelling, then recover', () => {
+    const vitals = createVitals()
+    strain(vitals)
+    expect(vitals.strainFor).toBeGreaterThan(0)
 
-    channel(lamp, 0.16)
-    channel(vehicle, 0.5)
-
-    expect(1 - vehicle.health).toBeGreaterThan(1 - lamp.health)
-    expect(vehicle.ceiling).toBeLessThan(lamp.ceiling)
-  })
-
-  it('is restored by daylight and not by darkness', () => {
-    const day = createVitals()
-    const night = createVitals()
-    day.power = 0.2
-    night.power = 0.2
-
-    updateVitals(day, 120, 1)
-    updateVitals(night, 120, 0)
-
-    expect(day.power).toBeGreaterThan(0.2)
-    expect(night.power).toBe(0.2)
+    updateVitals(vitals, 10)
+    expect(vitals.strainFor).toBe(0)
   })
 })

@@ -179,20 +179,21 @@ export type LampConditionId = (typeof LampCondition)[keyof typeof LampCondition]
  */
 export interface DeviceDef {
   readonly name: string
-  /** Fraction of a full charge to energise it. */
-  readonly cost: number
-  /** Seconds it runs before going dark again. */
-  readonly duration: number
+  /**
+   * Health slots the device holds while it burns.
+   *
+   * A loan, not a price: the slots come back the moment the device is switched
+   * off. One for everything today; a vehicle or a whole building might one day
+   * take more of you at once.
+   */
+  readonly slots: number
 }
 
 const DEVICES: Partial<Readonly<Record<PropId, DeviceDef>>> = {
-  [Prop.LampPost]: { name: 'street lamp', cost: 0.16, duration: 150 },
-  // Domestic devices: cheaper than a street lamp, dimmer, more intimate. The
-  // fridge is the outlier — expensive and long-burning, because what it will
-  // eventually do is keep food, and food should cost something to keep.
-  [Prop.FloorLamp]: { name: 'floor lamp', cost: 0.08, duration: 240 },
-  [Prop.Television]: { name: 'television', cost: 0.1, duration: 180 },
-  [Prop.Fridge]: { name: 'refrigerator', cost: 0.22, duration: 600 },
+  [Prop.LampPost]: { name: 'street lamp', slots: 1 },
+  [Prop.FloorLamp]: { name: 'floor lamp', slots: 1 },
+  [Prop.Television]: { name: 'television', slots: 1 },
+  [Prop.Fridge]: { name: 'refrigerator', slots: 1 },
 }
 
 export function deviceDef(id: PropId): DeviceDef | undefined {

@@ -1,26 +1,28 @@
-import type { Vitals } from '@/entity/vitals'
-
 /**
- * Showing health and power without showing health and power.
+ * Showing the health slots without a health bar.
  *
- * No bars, no numbers. The world reports its own state: losing health closes the
- * edges of the vision in and drains the colour out of what is left, and channelling
- * leaves a cold flare that fades over a couple of seconds.
- *
- * The reason to prefer this over a meter is not restraint for its own sake. A bar
- * is read once and then ignored; a view that is visibly narrowing is felt
- * continuously and cannot be tuned out. It also keeps attention on the world at the
- * moment the player most needs to be looking at it.
+ * The world still reports its own state first: loaning slots out closes the
+ * edges of the vision in and drains the colour, exactly as losing health used
+ * to — being mostly lent out should *feel* thin. A row of slot pips is the one
+ * concession to readout, because a discrete resource the player allocates
+ * deliberately has to be countable at a glance, and five diamonds are cheaper
+ * to read than a vignette is to estimate.
  */
 
-/** Health at which the edges begin to close in at all. */
-const HEALTH_VISIBLE_BELOW = 0.75
+export interface VitalsView {
+  /** Slots owned. */
+  readonly total: number
+  /** Slots out on loan to burning devices. */
+  readonly loaned: number
+  /** Seconds left on the channelling after-effect. */
+  readonly strainFor: number
+}
 
-/** Health at which the pulse of a heartbeat starts showing in the vignette. */
-const HEALTH_PULSE_BELOW = 0.35
+/** Free fraction at which the edges begin to close in. */
+const VISIBLE_BELOW = 0.75
 
-/** Power at which its own cold vignette begins. */
-const POWER_VISIBLE_BELOW = 0.3
+/** Free fraction at which the vignette starts to pulse. */
+const PULSE_BELOW = 0.4
 
 function vignette(
   ctx: CanvasRenderingContext2D,
@@ -47,44 +49,80 @@ function vignette(
   ctx.fillRect(0, 0, width, height)
 }
 
+/** One slot pip: a small diamond, in one of three states. */
+function pip(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  state: 'free' | 'loaned',
+  time: number,
+): void {
+  const r = 7
+
+  ctx.beginPath()
+  ctx.moveTo(x, y - r)
+  ctx.lineTo(x + r, y)
+  ctx.lineTo(x, y + r)
+  ctx.lineTo(x - r, y)
+  ctx.closePath()
+
+  if (state === 'free') {
+    ctx.fillStyle = '#d8d2c2'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+    return
+  }
+
+  // Loaned: the slot is out there burning in a lamp somewhere, so its pip is
+  // hollow with an ember in it, breathing slowly — alive, just not here.
+  ctx.strokeStyle = 'rgba(216, 210, 194, 0.5)'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+
+  const breathe = 0.55 + Math.sin(time * 2.1 + x * 0.3) * 0.2
+  ctx.fillStyle = `rgba(255, 184, 100, ${String(breathe)})`
+  ctx.beginPath()
+  ctx.arc(x, y, 2.6, 0, Math.PI * 2)
+  ctx.fill()
+}
+
 export function renderVitals(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  vitals: Vitals,
+  vitals: VitalsView,
   time: number,
   /** Seconds left on the cue that fires when something first notices you. */
   noticed = 0,
 ): void {
-  const { health, power, strainFor } = vitals
+  const { total, loaned, strainFor } = vitals
+  const free = Math.max(0, total - loaned)
+  const fraction = total > 0 ? free / total : 0
 
-  if (health < HEALTH_VISIBLE_BELOW) {
-    const hurt = (HEALTH_VISIBLE_BELOW - health) / HEALTH_VISIBLE_BELOW
+  if (fraction < VISIBLE_BELOW) {
+    const thin = (VISIBLE_BELOW - fraction) / VISIBLE_BELOW
 
-    // Below a point the vignette beats. Rate rises as health falls, so the
-    // quickening is itself the warning — no number needed to know it is worse.
+    // Down to the last free bar the vignette beats — the body objecting to how
+    // much of it is elsewhere. No number needed to know it is nearly all out.
     let pulse = 0
-    if (health < HEALTH_PULSE_BELOW) {
-      const urgency = 1 - health / HEALTH_PULSE_BELOW
+    if (fraction < PULSE_BELOW) {
+      const urgency = 1 - fraction / PULSE_BELOW
       const beat = Math.sin(time * (5 + urgency * 5))
       pulse = Math.max(0, beat) * 0.16 * urgency
     }
 
-    vignette(ctx, width, height, hurt * 0.85 + pulse, 'rgba(48, 4, 8, ALPHA)')
+    vignette(ctx, width, height, thin * 0.85 + pulse, 'rgba(48, 4, 8, ALPHA)')
 
-    // Colour drains as well as darkens. Losing saturation reads as fading rather
-    // than as being in a red room.
+    // Colour drains as well as darkens. Losing saturation reads as fading
+    // rather than as being in a red room.
     ctx.save()
     ctx.globalCompositeOperation = 'saturation'
-    ctx.globalAlpha = Math.min(0.75, hurt * 0.9)
+    ctx.globalAlpha = Math.min(0.75, thin * 0.9)
     ctx.fillStyle = 'hsl(0, 0%, 50%)'
     ctx.fillRect(0, 0, width, height)
     ctx.restore()
-  }
-
-  if (power < POWER_VISIBLE_BELOW) {
-    const empty = (POWER_VISIBLE_BELOW - power) / POWER_VISIBLE_BELOW
-    vignette(ctx, width, height, empty * 0.5, 'rgba(6, 16, 44, ALPHA)')
   }
 
   if (noticed > 0) {
@@ -96,8 +134,8 @@ export function renderVitals(
   }
 
   if (strainFor > 0) {
-    // A cold flare that fades, so channelling is felt as a cost the moment it is
-    // paid rather than noticed later on a meter.
+    // A cold flare that fades, so channelling is felt as a cost the moment it
+    // is paid rather than noticed later on a meter.
     const t = Math.min(1, strainFor / 2.4)
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
@@ -107,5 +145,17 @@ export function renderVitals(
     ctx.restore()
 
     vignette(ctx, width, height, t * 0.4, 'rgba(20, 40, 90, ALPHA)')
+  }
+
+  // The slot row, bottom centre, out of the world's way.
+  const gap = 22
+  const rowWidth = (total - 1) * gap
+  const startX = Math.round(width / 2 - rowWidth / 2)
+  const y = height - 26
+
+  for (let i = 0; i < total; i++) {
+    // Loaned slots empty from the right, so the row reads left-to-right as
+    // "what I still have".
+    pip(ctx, startX + i * gap, y, i < free ? 'free' : 'loaned', time)
   }
 }
