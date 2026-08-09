@@ -48,11 +48,29 @@ Keeping that seam intact is what makes a change of direction cheap.
 ## 2. Who you are working with
 
 **Joshua** (GitHub `jmelvin92`) directs the game design. He does not write code and does not read
-it. This shapes how to work:
+it — but he **does play the game and report back**.
 
-- **Verify your own work.** Run `npm run dev`, open it in Chrome with the browser tools, screenshot
-  it, and read the console. Do not hand Joshua a change and ask whether it worked — he cannot tell
-  you, and asking him to debug is asking him to do something he explicitly cannot do.
+### The loop
+
+**He gives direction → you implement → he tests and tells you what to change.**
+
+He asked for this explicitly, and the reason is worth keeping: driving the game through the browser
+tools to prove a change works is slow, and it makes him wait for something he can check himself in
+seconds. So:
+
+- **Do not hand-verify in the browser by default.** Make the change, confirm the automated gates
+  pass, tell him it is ready. The dev server hot-reloads, so he can look immediately.
+- **Do keep the cheap gates.** `typecheck`, `lint` and `test` take seconds, catch what he cannot,
+  and are not what he was objecting to. Never skip them.
+- **Reach for the browser only when it genuinely earns the time**: something looks wrong and he
+  cannot describe why, a bug will not reproduce from his description, or the change is invisible to
+  tests and he has asked for a check. Say when you are doing it and why.
+- **He reports symptoms, not causes.** "The guy walks weird" is the input; working out why is the
+  job. Ask for specifics if a report is ambiguous, rather than guessing and shipping a fix for the
+  wrong thing.
+
+### The rest
+
 - **Explain in plain terms.** Describe what changed and what it means for the game. Skip the
   implementation detail unless it affects a decision that is his to make.
 - **He decides design; you decide engineering.** Theme, mechanics, and feel are his. Architecture,
@@ -60,6 +78,8 @@ it. This shapes how to work:
 - **His standard is explicit:** built slowly and correctly, no spaghetti, no fluff, no cut corners,
   written to a professional standard. Prefer doing it properly over doing it quickly. If something
   needs to be done twice to be right, do it twice.
+- **Do not build ceremony he did not ask for.** He has pushed back on over-engineering once already,
+  on branching. Solve the problem in front of you.
 
 ---
 
