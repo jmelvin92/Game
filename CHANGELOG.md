@@ -11,6 +11,14 @@ For the reasoning behind any individual change, read the commit body — `git lo
 
 ## [Unreleased]
 
+### Changed
+
+- The repository is now public. GitHub restricts branch protection to public repositories and paid
+  plans, and this was the route chosen to get it.
+- Branch protection is active on `main`, with admin enforcement on. Direct pushes are refused
+  server-side even for the repository owner, `main` advances only through a pull request whose
+  `Verify` check passed, and force-pushes and deletion are refused.
+
 ## [0.1.0] — Phase 0: Infrastructure
 
 The engineering foundation. No game code — this phase exists so that everything after it is

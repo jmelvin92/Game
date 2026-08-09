@@ -125,6 +125,12 @@ Simulation produces state; rendering reads it. Never the reverse.
 
 `main` is always releasable, protected, and tagged. Never commit to it directly.
 
+This is enforced by GitHub, not by convention. The repository is public specifically so branch
+protection is available, and `enforce_admins` is on, so the rules apply to Joshua too — a direct
+push to `main` is refused server-side even with `--no-verify`. `main` advances only by merging a
+pull request whose `Verify` check passed. Force-pushes and branch deletion are refused outright,
+so published history cannot be rewritten: fix a bad commit with a revert, never a force-push.
+
 ```
 main  ──●───────●───────●        protected, tagged
          \     / \     /
