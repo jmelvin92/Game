@@ -11,6 +11,7 @@ import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
 import { gradeDaylight, sunAt } from '@/render/daylight'
+import { applyGrade, createGrade } from '@/render/grade'
 import { darknessAt, renderLighting } from '@/render/lighting'
 import { drawHud, renderScene } from '@/render/renderer'
 import { renderVitals } from '@/render/vitalsOverlay'
@@ -324,13 +325,17 @@ window.addEventListener('keydown', (event) => {
 // Starts at night, which is the half worth building first and the half that shows
 // whether the lighting works at all.
 const clock = createClock(22)
+// Exposed on the dev handle so it can be dialled while looking at the game.
+// Grading is judged by eye and nothing else; guessing at numbers here and
+// rebuilding to see them is the slow way to do it.
+const grade = createGrade()
 
 if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
   Object.defineProperty(window, 'game', {
-    value: { grid, actor, camera, input, clock, vitals, hunters, sunAt },
+    value: { grid, actor, camera, input, clock, vitals, hunters, sunAt, grade },
   })
 }
 
@@ -455,6 +460,10 @@ startLoop(
       { colour: 'rgb(0, 0, 0)', alpha: 0 },
       lights,
     )
+
+    // Grading last of all, over everything including the night pass, so it is one
+    // process the whole picture goes through rather than a filter on part of it.
+    applyGrade(ctx, logicalWidth, logicalHeight, grade)
 
     // The HUD and the vitals overlay are drawn unscaled, or they would grow with
     // the world.
