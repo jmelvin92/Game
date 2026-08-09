@@ -451,6 +451,11 @@ startLoop(
     // has a little of each and looks better for the overlap.
     gradeDaylight(ctx, logicalWidth, logicalHeight, sun)
 
+    // Grading before the night pass, not after. Darkness is a light in the scene,
+    // not a look applied to it — grading on top of it was darkening an already
+    // black picture and vignetting it twice.
+    applyGrade(ctx, logicalWidth, logicalHeight, grade, 1 - darknessAt(clock.fraction))
+
     renderLighting(
       ctx,
       lightBuffer,
@@ -460,10 +465,6 @@ startLoop(
       { colour: 'rgb(0, 0, 0)', alpha: 0 },
       lights,
     )
-
-    // Grading last of all, over everything including the night pass, so it is one
-    // process the whole picture goes through rather than a filter on part of it.
-    applyGrade(ctx, logicalWidth, logicalHeight, grade)
 
     // The HUD and the vitals overlay are drawn unscaled, or they would grow with
     // the world.
