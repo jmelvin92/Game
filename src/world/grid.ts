@@ -60,7 +60,15 @@ export interface Grid {
   roofAt(x: number, y: number): number
   /** How far this part of the roof rises above the eaves, in steps. */
   roofHeightAt(x: number, y: number): number
-  setRoof(x: number, y: number, style: number, height?: number): void
+  /**
+   * How high the eaves sit, in wall segments.
+   *
+   * Stored per tile rather than worked out from a nearby wall: a tile in the
+   * middle of a large building has no wall beside it to ask, and inferring one
+   * storey put the roof underneath the walls where it could not be seen.
+   */
+  roofBaseAt(x: number, y: number): number
+  setRoof(x: number, y: number, style: number, height?: number, base?: number): void
 }
 
 export function createGrid(width: number, height: number, fill: TileId): Grid {
@@ -77,6 +85,7 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
   const buildings = new Uint16Array(area)
   const roofs = new Uint8Array(area)
   const roofHeights = new Uint8Array(area)
+  const roofBases = new Uint8Array(area)
   const props = new Uint8Array(area)
   const propVariants = new Uint8Array(area)
 
@@ -161,10 +170,16 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
       return roofHeights[y * width + x] ?? 0
     },
 
-    setRoof(x: number, y: number, style: number, height = 0): void {
+    roofBaseAt(x: number, y: number): number {
+      if (!contains(x, y)) return 0
+      return roofBases[y * width + x] ?? 0
+    },
+
+    setRoof(x: number, y: number, style: number, height = 0, base = 1): void {
       if (!contains(x, y)) return
       roofs[y * width + x] = style
       roofHeights[y * width + x] = height
+      roofBases[y * width + x] = base
     },
   }
 }

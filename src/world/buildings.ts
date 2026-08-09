@@ -22,8 +22,16 @@ export interface Archetype {
   /** Footprint bounds in tiles, before the lot is taken into account. */
   readonly minSize: number
   readonly maxSize: number
-  /** Which wall art to use. Interpreted only by the renderer. */
+  /** Which wall art the outside of the building uses. Renderer's business only. */
   readonly wallStyle: number
+  /**
+   * Which wall art the partitions inside use.
+   *
+   * Deliberately not the same as the outside. The exterior styles are building
+   * facades — multi-storey fronts with windows and shop frontage — and using one
+   * for a partition puts a shop window in somebody's hallway.
+   */
+  readonly interiorWallStyle: number
   readonly roofStyle: number
   /** How many steps the roof climbs before flattening off. 0 is a flat roof. */
   readonly roofRise: number
@@ -52,7 +60,8 @@ export interface Archetype {
  */
 export const WallStyle = {
   Brick: 0,
-  Stone: 1,
+  /** Plain grey. Stands in for plaster on interior partitions. */
+  Plaster: 1,
   Wood: 2,
   /** Building facades from the town pack — multi-storey fronts with real windows. */
   Apartment: 3,
@@ -69,7 +78,8 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Residential,
     minSize: 7,
     maxSize: 11,
-    wallStyle: WallStyle.Wood,
+    wallStyle: WallStyle.Stucco,
+    interiorWallStyle: WallStyle.Plaster,
     roofStyle: 1,
     roofRise: 4,
     segments: 3,
@@ -83,6 +93,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     minSize: 8,
     maxSize: 12,
     wallStyle: WallStyle.Apartment,
+    interiorWallStyle: WallStyle.Plaster,
     roofStyle: 2,
     roofRise: 3,
     segments: 2,
@@ -96,6 +107,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     minSize: 9,
     maxSize: 14,
     wallStyle: WallStyle.Shopfront,
+    interiorWallStyle: WallStyle.Plaster,
     roofStyle: 3,
     roofRise: 1,
     segments: 2,
@@ -110,6 +122,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     minSize: 11,
     maxSize: 16,
     wallStyle: WallStyle.GlassTower,
+    interiorWallStyle: WallStyle.Plaster,
     roofStyle: 4,
     roofRise: 0,
     segments: 4,
@@ -123,6 +136,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     minSize: 13,
     maxSize: 20,
     wallStyle: WallStyle.Concrete,
+    interiorWallStyle: WallStyle.Plaster,
     roofStyle: 5,
     roofRise: 2,
     segments: 2,
@@ -137,6 +151,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     minSize: 10,
     maxSize: 15,
     wallStyle: WallStyle.Industrial,
+    interiorWallStyle: WallStyle.Plaster,
     roofStyle: 6,
     roofRise: 1,
     segments: 2,
@@ -186,7 +201,7 @@ export function placeBuilding(
       const toEdge = Math.min(tx - x, x + w - 1 - tx, ty - y, y + h - 1 - ty)
       const rise = Math.min(toEdge, archetype.roofRise)
 
-      grid.setRoof(tx, ty, archetype.roofStyle, rise)
+      grid.setRoof(tx, ty, archetype.roofStyle, rise, archetype.segments)
     }
   }
 
@@ -328,7 +343,7 @@ function subdivide(
       cut,
       WallSide.North,
       isDoor ? Wall.None : Wall.Solid,
-      archetype.wallStyle,
+      archetype.interiorWallStyle,
       archetype.segments,
     )
   }

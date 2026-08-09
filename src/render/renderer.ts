@@ -128,25 +128,6 @@ export function cutawayOpacity(midX: number, midY: number, actorX: number, actor
 }
 
 /**
- * How tall this building's walls stand, in segments.
- *
- * Read from a perimeter wall rather than stored per tile: the roof has to land on
- * top of the walls, and the walls are the thing that knows how high they are.
- */
-function wallHeight(grid: Grid, x: number, y: number): number {
-  for (const [tx, ty, side] of [
-    [x, y, WallSide.North],
-    [x, y, WallSide.West],
-    [x, y + 1, WallSide.North],
-    [x + 1, y, WallSide.West],
-  ] as const) {
-    const segments = grid.wallSegmentsAt(tx, ty, side)
-    if (segments > 0) return segments
-  }
-  return 1
-}
-
-/**
  * A stable pseudo-random number per tile, for choosing a ground variant.
  *
  * Deterministic on position rather than actually random: the same tile must pick
@@ -158,13 +139,6 @@ function groundVariant(x: number, y: number): number {
   return (h ^ (h >>> 13)) >>> 0
 }
 
-/**
- * Draws the world and reports the lights it found.
- *
- * Returning them rather than writing them into the scene keeps the one-way rule
- * intact: the renderer reads simulation state and never writes to it. The lighting
- * pass then runs over the finished image.
- */
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -287,7 +261,7 @@ export function renderScene(
       const { sx, sy } = worldToScreen(x, y)
       // Roofs cap the walls, so they sit at the building's full wall height, plus
       // however far this part of the hip has climbed toward the ridge.
-      const rise = grid.roofHeightAt(x, y) * ROOF_STEP + wallHeight(grid, x, y) * TILE_Z
+      const rise = grid.roofHeightAt(x, y) * ROOF_STEP + grid.roofBaseAt(x, y) * TILE_Z
 
       standing.push({
         // A storey above the ground, and drawn after everything at this tile so it
