@@ -20,22 +20,33 @@ import { Tile, type TileId } from '@/world/tiles'
 /**
  * The map is taller than it is wide.
  *
- * The town sits in the southern third and open country runs north of it, so the
+ * The town sits in the southern half and open country runs north of it, so the
  * place has an edge — somewhere the streets stop and the map keeps going. A town
  * that fills its own map has no outside, and nowhere to be that is not a street.
+ *
+ * Size is set by how long it takes to walk, not by the numbers. At 3.4 tiles a
+ * second this is a little over two minutes across the town and about five from the
+ * northern edge to the southern one — where the previous 128x256 was thirty-eight
+ * seconds and seventy-five, small enough to see all of in a single night.
+ *
+ * Sixteen times the area of that, and still only 8 MB: the world costs 16 bytes a
+ * tile, so being large is nearly free. Streaming is a memory argument, and at this
+ * size there is not one yet.
  */
-export const SANDBOX_WIDTH = 128
-export const SANDBOX_HEIGHT = 256
+export const SANDBOX_WIDTH = 512
+export const SANDBOX_HEIGHT = 1024
 
 /**
  * First row of the town. Everything north of this is country.
  *
- * Set so the town keeps the full extent it had before the country was added on top
- * of it, rather than being squeezed into part of a map the same size.
+ * Half and half, so the country is a place in its own right rather than a border.
  */
-export const TOWN_TOP = 128
+export const TOWN_TOP = 512
 
 export const SANDBOX_SEED = 20260808
+
+/** Roughly one field per this many tiles of countryside. */
+const TILES_PER_FIELD = 630
 
 /** Tiles between road centrelines. */
 const BLOCK = 32
@@ -47,16 +58,18 @@ const TOWN_CENTRE_Y = (TOWN_TOP + SANDBOX_HEIGHT) / 2
 
 export const SPAWN = { x: TOWN_CENTRE_X + 0.5, y: TOWN_CENTRE_Y + 0.5 } as const
 
-/** True where a road runs, so lots can be kept clear of them. */
+/**
+ * True where a road runs, so lots can be kept clear of them.
+ *
+ * Modular rather than a search outward from the centre. The previous version swept
+ * a fixed twelve blocks each way, which covered the old map by luck rather than by
+ * design and would have quietly stopped laying roads part-way across a larger one —
+ * exactly the sort of thing that looks like a generation bug and is really a
+ * constant that stopped being big enough.
+ */
 function roadBand(v: number, centre: number): boolean {
-  const half = ROAD_WIDTH / 2
-  for (let at = centre; at < centre + BLOCK * 12; at += BLOCK) {
-    if (Math.abs(v - at) < half) return true
-  }
-  for (let at = centre - BLOCK; at > centre - BLOCK * 12; at -= BLOCK) {
-    if (Math.abs(v - at) < half) return true
-  }
-  return false
+  const offset = (((v - centre) % BLOCK) + BLOCK) % BLOCK
+  return Math.min(offset, BLOCK - offset) < ROAD_WIDTH / 2
 }
 
 function layStreets(grid: Grid): void {
@@ -373,7 +386,9 @@ function lotsPerBlock(district: DistrictId): number {
  * Kept off the road, so the way back to town stays legible.
  */
 function layFields(grid: Grid, rng: Rng): void {
-  const fields = 26
+  // Scaled to the area rather than a fixed count, or enlarging the map quietly
+  // thins the country out until it is bare grass again.
+  const fields = Math.round((grid.width * TOWN_TOP) / TILES_PER_FIELD)
 
   for (let i = 0; i < fields; i++) {
     const w = rng.int(14, 30)

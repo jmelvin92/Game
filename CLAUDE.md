@@ -258,10 +258,11 @@ depends on what the game turns out to be, and that is still open. Ask rather tha
 
 ### Known limitations, honestly
 
-- **The world is a fixed 128×256 grid**, held entirely in memory. Fine for a sandbox, and the
-  reason chunking exists — but do not mistake it for a streaming world. It is **taller than it is
-  wide on purpose**: `TOWN_TOP` in `src/world/sandbox.ts` splits it, with the town below and
-  countryside above. Nothing is built north of that line, `District.Countryside` exists to keep it
+- **The world is a fixed 512×1024 grid**, held entirely in memory — 8 MB, at 16 bytes a tile.
+  Nothing streams, and at this size nothing needs to: chunking is a memory argument and there is
+  not one yet. Roughly two and a half minutes to walk across the town, five from end to end. It is
+  **taller than it is wide on purpose**: `TOWN_TOP` in `src/world/sandbox.ts` splits it, with the
+  town below and countryside above. Nothing is built north of that line, `District.Countryside` exists to keep it
   that way, and `tests/sandbox.test.ts` fails if buildings or street lighting appear there.
 - **Collision is circle-versus-tile**, resolved per axis with substepping so nothing tunnels at
   speed. There is no entity-to-entity collision, because there is only one entity.

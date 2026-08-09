@@ -59,6 +59,14 @@ export interface Grid {
    */
   chargeAt(x: number, y: number): number
   setCharge(x: number, y: number, seconds: number): void
+  /**
+   * Indices of the tiles currently holding a charge.
+   *
+   * An index over the same data rather than a second copy of it — the array above
+   * stays the source of truth and this is only how you find the live entries
+   * without reading half a million tiles that are dark.
+   */
+  charged(): ReadonlySet<number>
 
   /** What stands on this tile — a tree, a bush — or {@link Prop.None}. */
   propAt(x: number, y: number): PropId
@@ -100,6 +108,8 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
   const propVariants = new Uint8Array(area)
   // Tenths of a second, so a charge of a few minutes fits a 16-bit slot.
   const charges = new Uint16Array(area)
+  // Which of those are non-zero. Maintained by setCharge; see `charged`.
+  const lit = new Set<number>()
 
   const contains = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < width && y < height
 
@@ -163,7 +173,16 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
 
     setCharge(x: number, y: number, seconds: number): void {
       if (!contains(x, y)) return
-      charges[y * width + x] = Math.max(0, Math.min(6553, Math.round(seconds * 10)))
+      const index = y * width + x
+      const tenths = Math.max(0, Math.min(6553, Math.round(seconds * 10)))
+      charges[index] = tenths
+
+      if (tenths > 0) lit.add(index)
+      else lit.delete(index)
+    },
+
+    charged(): ReadonlySet<number> {
+      return lit
     },
 
     propAt(x: number, y: number): PropId {
@@ -214,10 +233,16 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
  * drift out of step with the map the way a parallel list can.
  */
 export function drainCharges(grid: Grid, step: number): void {
-  for (let y = 0; y < grid.height; y++) {
-    for (let x = 0; x < grid.width; x++) {
-      const charge = grid.chargeAt(x, y)
-      if (charge > 0) grid.setCharge(x, y, charge - step)
-    }
+  const charged = grid.charged()
+  if (charged.size === 0) return
+
+  // Copied because setCharge removes entries as they expire, and a handful of lit
+  // devices makes the allocation irrelevant. Sweeping the whole map instead was
+  // half a million tile reads a frame at the current size — invisible on a small
+  // map and the most expensive thing in the update loop on a large one.
+  for (const index of [...charged]) {
+    const x = index % grid.width
+    const y = (index - x) / grid.width
+    grid.setCharge(x, y, grid.chargeAt(x, y) - step)
   }
 }
