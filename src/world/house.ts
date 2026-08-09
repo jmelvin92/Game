@@ -40,7 +40,7 @@ export const HOUSE_H = 9
 const SEGMENTS = SEGMENTS_PER_STOREY
 
 const EXTERIOR = WallStyle.Wood
-const INTERIOR = WallStyle.Plaster
+const INTERIOR = WallStyle.Painted
 
 interface WallRun {
   readonly x: number

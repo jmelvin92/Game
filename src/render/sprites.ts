@@ -712,6 +712,74 @@ function drawLampPost(variant: number): HTMLCanvasElement {
 }
 
 /**
+ * A painted interior wall course: smooth plaster over a skirting board.
+ *
+ * Deliberately quiet. An interior wall's job is to be a calm surface the
+ * furniture stands against — the moment it has texture it competes, which is
+ * exactly what was wrong with the stone it replaces.
+ */
+function drawPaintedWall(side: WallSideId): HTMLCanvasElement {
+  const [element, ctx] = canvas(WALL_W, WALL_H)
+
+  const rise = TILE_H / 2
+  const baseLeft = side === WallSide.West ? WALL_H : WALL_H - rise
+  const baseRight = side === WallSide.West ? WALL_H - rise : WALL_H
+  const top = TILE_W / 2
+
+  const face = (): void => {
+    ctx.beginPath()
+    ctx.moveTo(0, baseLeft)
+    ctx.lineTo(WALL_W, baseRight)
+    ctx.lineTo(WALL_W, baseRight - top)
+    ctx.lineTo(0, baseLeft - top)
+    ctx.closePath()
+  }
+
+  // The two facings take different light, like every other wall in the packs.
+  const paint = ctx.createLinearGradient(0, 0, 0, WALL_H)
+  if (side === WallSide.West) {
+    paint.addColorStop(0, '#8f887b')
+    paint.addColorStop(1, '#7c7568')
+  } else {
+    paint.addColorStop(0, '#a29a8c')
+    paint.addColorStop(1, '#8d8578')
+  }
+  face()
+  ctx.fillStyle = paint
+  ctx.fill()
+
+  // Skirting board along the floor line, slightly deeper than the wall colour.
+  ctx.strokeStyle = side === WallSide.West ? '#5b544a' : '#675f54'
+  ctx.lineWidth = 5
+  ctx.beginPath()
+  ctx.moveTo(0, baseLeft - 3)
+  ctx.lineTo(WALL_W, baseRight - 3)
+  ctx.stroke()
+
+  // A hairline of shadow at the ceiling edge, so the course ends deliberately.
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(0, baseLeft - top + 1)
+  ctx.lineTo(WALL_W, baseRight - top + 1)
+  ctx.stroke()
+
+  // Faint wear: a handful of scuffs low on the wall. A lived-in house, left.
+  ctx.strokeStyle = 'rgba(60, 54, 46, 0.12)'
+  ctx.lineWidth = 1
+  for (const at of [0.22, 0.55, 0.8]) {
+    const x = WALL_W * at
+    const base = baseLeft + (baseRight - baseLeft) * at
+    ctx.beginPath()
+    ctx.moveTo(x - 6, base - 14)
+    ctx.lineTo(x + 5, base - 11)
+    ctx.stroke()
+  }
+
+  return element
+}
+
+/**
  * A low post-and-rail fence filling a wall slot.
  *
  * Same parallelogram geometry as the placeholder wall, but only the bottom
@@ -1724,6 +1792,12 @@ export function buildSprites(
     const fence = drawFence(side)
     walls.set(wallSpriteKey(Wall.Solid, side, WallStyle.Fence), fence)
     walls.set(wallSpriteKey(Wall.Window, side, WallStyle.Fence), fence)
+
+    // Painted interiors likewise: glazing makes no sense in a partition, so the
+    // window key reuses the solid course.
+    const painted = drawPaintedWall(side)
+    walls.set(wallSpriteKey(Wall.Solid, side, WallStyle.Painted), painted)
+    walls.set(wallSpriteKey(Wall.Window, side, WallStyle.Painted), painted)
   }
 
   const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))

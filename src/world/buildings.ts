@@ -70,6 +70,14 @@ export const WallStyle = {
    * separate mechanism. One segment tall; a gate is a Doorway in it.
    */
   Fence: 9,
+  /**
+   * Painted plaster with a skirting board, drawn in code. Interior partitions.
+   *
+   * The style previously used indoors mapped to the wall pack's stone sheet, so
+   * every hallway was castle masonry. No pack here has a domestic interior
+   * surface; a smooth painted course is easy to draw and reads as home.
+   */
+  Painted: 10,
 } as const
 
 export const ARCHETYPES: readonly Archetype[] = [
