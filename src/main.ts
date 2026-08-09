@@ -4,11 +4,13 @@ import { createClock } from '@/core/time'
 import { startLoop } from '@/core/loop'
 import { createActor } from '@/entity/actor'
 import { createFootsteps } from '@/entity/footsteps'
+import { canChannel, channel, createVitals, updateVitals } from '@/entity/vitals'
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
 import { darknessAt, renderLighting, skyTint } from '@/render/lighting'
 import { drawHud, renderScene } from '@/render/renderer'
+import { renderVitals } from '@/render/vitalsOverlay'
 import {
   Animation,
   ANIMATIONS,
@@ -21,6 +23,7 @@ import {
 } from '@/render/sprites'
 import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
 import { createSandbox, SPAWN } from '@/world/sandbox'
+import { LampState, nearestLamp, Prop } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 
 /**
@@ -189,8 +192,27 @@ const sprites = buildSprites(sheets, characterSheets)
 // leave on, not something you hold down while walking.
 let torchOn = true
 
+const vitals = createVitals()
+
+/** How far the gift reaches, in tiles. Close enough that you must walk to a lamp. */
+const CHANNEL_REACH = 2.2
+
 window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyF') torchOn = !torchOn
+
+  if (event.code === 'KeyE') {
+    const lamp = nearestLamp(grid, actor.x, actor.y, CHANNEL_REACH)
+
+    // A broken lamp cannot be woken — it needs repairing first, which is daytime
+    // work and does not exist yet. Refusing here rather than silently doing
+    // nothing is what will make that gap obvious when it matters.
+    if (lamp === undefined || lamp.state === LampState.Broken) return
+    if (lamp.state === LampState.Working) return
+    if (!canChannel(vitals)) return
+
+    grid.setProp(lamp.x, lamp.y, Prop.LampPost, LampState.Working)
+    channel(vitals)
+  }
 })
 
 // Starts at night, which is the half worth building first and the half that shows
@@ -201,7 +223,7 @@ if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
-  Object.defineProperty(window, 'game', { value: { grid, actor, camera, input, clock } })
+  Object.defineProperty(window, 'game', { value: { grid, actor, camera, input, clock, vitals } })
 }
 
 // Sound. Surfaces without a recording stay silent rather than borrowing another's,
@@ -237,6 +259,10 @@ startLoop(
     elapsed += step
     clock.advance(step)
 
+    // Daylight is the only thing that restores the gift, so the cycle is what
+    // paces the whole loop rather than a regeneration timer.
+    updateVitals(vitals, step, 1 - darknessAt(clock.fraction))
+
     const direction = input.direction()
     const wasX = actor.x
     const wasY = actor.y
@@ -271,6 +297,7 @@ startLoop(
       time: elapsed,
       dayFraction: clock.fraction,
       torch: torchOn,
+      power: vitals.power,
     })
 
     renderLighting(
@@ -283,9 +310,12 @@ startLoop(
       lights,
     )
 
-    // The HUD is drawn unscaled, or the text would grow with the world.
+    // The HUD and the vitals overlay are drawn unscaled, or they would grow with
+    // the world.
     const ratio = window.devicePixelRatio || 1
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+
+    renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed)
     drawHud(ctx, actor, grid, clock.label(), torchOn, zoom)
   },
 )

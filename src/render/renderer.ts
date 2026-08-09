@@ -44,6 +44,8 @@ export interface Scene {
   readonly dayFraction: number
   /** Whether the character's torch is on. */
   readonly torch: boolean
+  /** 0 to 1. The torch dims with it, so running low is visible in the world. */
+  readonly power: number
 }
 
 interface Bounds {
@@ -346,11 +348,15 @@ export function renderScene(
     const screenDirX = actor.facingX - actor.facingY
     const screenDirY = (actor.facingX + actor.facingY) / 2
 
+    // The torch runs on the same gift as everything else, so it fades as that
+    // does — the beam shortening is the warning, rather than a number falling.
+    const torchStrength = 0.35 + Math.min(1, scene.power / 0.4) * 0.65
+
     lights.push({
       x: ox + sx,
       y: oy + sy - TILE_Z * 0.55,
-      radius: TILE_W * 4.2,
-      strength: 1,
+      radius: TILE_W * (2.2 + torchStrength * 2),
+      strength: torchStrength,
       colour: 'rgba(222, 233, 255, ALPHA)',
       direction: Math.atan2(screenDirY, screenDirX),
       cone: Math.PI / 3.2,
@@ -362,7 +368,7 @@ export function renderScene(
       x: ox + sx,
       y: oy + sy - TILE_Z * 0.3,
       radius: TILE_W * 1.15,
-      strength: 0.65,
+      strength: 0.65 * torchStrength,
       colour: 'rgba(198, 212, 244, ALPHA)',
     })
   }

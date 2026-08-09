@@ -103,3 +103,40 @@ export type LampStateId = (typeof LampState)[keyof typeof LampState]
 export function propDef(id: PropId): PropDef {
   return DEFS[id]
 }
+
+/**
+ * The nearest lamp within reach of a position, or undefined.
+ *
+ * A world query rather than something the renderer or input layer works out, so
+ * anything that needs to find a lamp — the player now, something else later —
+ * asks the same question of the same place.
+ */
+export function nearestLamp(
+  grid: {
+    propAt(x: number, y: number): PropId
+    propVariantAt(x: number, y: number): number
+  },
+  x: number,
+  y: number,
+  reach: number,
+): { x: number; y: number; state: number } | undefined {
+  const radius = Math.ceil(reach)
+  let best: { x: number; y: number; state: number } | undefined
+  let bestDistance = reach * reach
+
+  for (let ty = Math.floor(y) - radius; ty <= Math.floor(y) + radius; ty++) {
+    for (let tx = Math.floor(x) - radius; tx <= Math.floor(x) + radius; tx++) {
+      if (grid.propAt(tx, ty) !== Prop.LampPost) continue
+
+      const dx = tx + 0.5 - x
+      const dy = ty + 0.5 - y
+      const distance = dx * dx + dy * dy
+      if (distance > bestDistance) continue
+
+      bestDistance = distance
+      best = { x: tx, y: ty, state: grid.propVariantAt(tx, ty) }
+    }
+  }
+
+  return best
+}
