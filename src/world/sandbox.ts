@@ -372,6 +372,8 @@ function lotsPerBlock(district: DistrictId): number {
     case District.Countryside:
       // Nothing is built out here, so no plots are wanted.
       return 0
+    case District.TrailerPark:
+      return 3
   }
 }
 

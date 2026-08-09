@@ -26,6 +26,14 @@ export const Prop = {
   Scrub: 6,
   /** Street lighting. Whether it still works is a separate question. */
   LampPost: 7,
+  /** A dead car, left where it stopped. Variant 0 faces along x, 1 along y. */
+  CarWreck: 8,
+  /** Domestic air-conditioning condenser, silent beside a house wall. */
+  AirConditioner: 9,
+  /** Bare rock. Desert and rocky ground furniture. */
+  Boulder: 10,
+  /** Airfield windsock, hanging dead — there is weather but no wind yet. */
+  Windsock: 11,
 } as const
 
 export type PropId = (typeof Prop)[keyof typeof Prop]
@@ -60,6 +68,11 @@ const DEFS: Readonly<Record<PropId, PropDef>> = {
   [Prop.Sagebrush]: { name: 'sagebrush', solid: false, opaque: false, radius: 0 },
   [Prop.Scrub]: { name: 'scrub', solid: false, opaque: false, radius: 0 },
   [Prop.LampPost]: { name: 'lamp post', solid: true, opaque: false, radius: 0.12 },
+  // A wreck blocks most of its tile: it is a thing you go around, not through.
+  [Prop.CarWreck]: { name: 'car wreck', solid: true, opaque: false, radius: 0.42 },
+  [Prop.AirConditioner]: { name: 'air conditioner', solid: true, opaque: false, radius: 0.18 },
+  [Prop.Boulder]: { name: 'boulder', solid: true, opaque: false, radius: 0.3 },
+  [Prop.Windsock]: { name: 'windsock', solid: true, opaque: false, radius: 0.1 },
 }
 
 /**

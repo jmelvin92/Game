@@ -62,6 +62,14 @@ export const WallStyle = {
   /** Plain grey. Stands in for plaster on interior partitions. */
   Plaster: 1,
   Wood: 2,
+  /**
+   * A low timber fence, drawn in code. Yards and field boundaries.
+   *
+   * A fence is a wall as far as the world is concerned — it sits on a tile edge
+   * and blocks movement — just a short one, so it is a style here rather than a
+   * separate mechanism. One segment tall; a gate is a Doorway in it.
+   */
+  Fence: 9,
 } as const
 
 export const ARCHETYPES: readonly Archetype[] = [
@@ -138,6 +146,127 @@ export const ARCHETYPES: readonly Archetype[] = [
     windows: 0.12,
   },
   {
+    // Single storey, pitched roof: the small end of the housing stock.
+    name: 'bungalow',
+    district: District.Residential,
+    minSize: 6,
+    maxSize: 9,
+    wallStyle: WallStyle.Wood,
+    interiorWallStyle: WallStyle.Plaster,
+    roofStyle: 1,
+    roofRise: 3,
+    storeys: 1,
+    floor: Tile.Floorboards,
+    minRoom: 3,
+    windows: 0.65,
+  },
+  {
+    // A long thin box with a flat roof. Placed by the trailer-park district in
+    // tight rows; proportion is enforced at placement, since min/max alone
+    // cannot make a building oblong.
+    name: 'trailer',
+    district: District.TrailerPark,
+    minSize: 4,
+    maxSize: 9,
+    wallStyle: WallStyle.Plaster,
+    interiorWallStyle: WallStyle.Plaster,
+    roofStyle: 7,
+    roofRise: 0,
+    storeys: 1,
+    floor: Tile.Floorboards,
+    // One open space: nobody partitions a trailer.
+    minRoom: 99,
+    windows: 0.5,
+  },
+  {
+    // Downtown. The tallest thing on the island, and visible from most of it.
+    name: 'tower',
+    district: District.Commercial,
+    minSize: 12,
+    maxSize: 17,
+    wallStyle: WallStyle.Plaster,
+    interiorWallStyle: WallStyle.Plaster,
+    roofStyle: 4,
+    roofRise: 0,
+    storeys: 7,
+    floor: Tile.Tiles,
+    minRoom: 5,
+    windows: 0.85,
+  },
+  {
+    name: 'apartment',
+    district: District.Commercial,
+    minSize: 10,
+    maxSize: 14,
+    wallStyle: WallStyle.Brick,
+    interiorWallStyle: WallStyle.Plaster,
+    roofStyle: 2,
+    roofRise: 0,
+    storeys: 4,
+    floor: Tile.Floorboards,
+    minRoom: 3,
+    windows: 0.75,
+  },
+  {
+    // Placed on farms by name, never grown from a district.
+    name: 'farmhouse',
+    district: District.Countryside,
+    minSize: 7,
+    maxSize: 10,
+    wallStyle: WallStyle.Wood,
+    interiorWallStyle: WallStyle.Plaster,
+    roofStyle: 1,
+    roofRise: 4,
+    storeys: 2,
+    floor: Tile.Floorboards,
+    minRoom: 3,
+    windows: 0.6,
+  },
+  {
+    name: 'barn',
+    district: District.Countryside,
+    minSize: 9,
+    maxSize: 13,
+    wallStyle: WallStyle.Wood,
+    interiorWallStyle: WallStyle.Wood,
+    roofStyle: 8,
+    roofRise: 5,
+    storeys: 2,
+    floor: Tile.Dirt,
+    minRoom: 99,
+    windows: 0.1,
+  },
+  {
+    // Airfield. Tall single volume with a shallow roof.
+    name: 'hangar',
+    district: District.Countryside,
+    minSize: 14,
+    maxSize: 20,
+    wallStyle: WallStyle.Plaster,
+    interiorWallStyle: WallStyle.Plaster,
+    roofStyle: 5,
+    roofRise: 2,
+    storeys: 3,
+    floor: Tile.Concrete,
+    minRoom: 99,
+    windows: 0.08,
+  },
+  {
+    // A single-car outbuilding beside a house.
+    name: 'garage',
+    district: District.Countryside,
+    minSize: 4,
+    maxSize: 5,
+    wallStyle: WallStyle.Wood,
+    interiorWallStyle: WallStyle.Wood,
+    roofStyle: 7,
+    roofRise: 0,
+    storeys: 1,
+    floor: Tile.Concrete,
+    minRoom: 99,
+    windows: 0.1,
+  },
+  {
     name: 'depot',
     district: District.Industrial,
     minSize: 10,
@@ -155,6 +284,18 @@ export const ARCHETYPES: readonly Archetype[] = [
 
 export function archetypesFor(district: DistrictId): readonly Archetype[] {
   return ARCHETYPES.filter((a) => a.district === district)
+}
+
+/**
+ * A specific archetype by name, for the pieces of the map that are placed rather
+ * than grown — farmhouses on farms, hangars on airfields. Throwing on a miss is
+ * deliberate: a typo here is a build error in spirit and should fail loudly at
+ * generation, not place nothing and leave an empty farm.
+ */
+export function archetypeNamed(name: string): Archetype {
+  const found = ARCHETYPES.find((a) => a.name === name)
+  if (found === undefined) throw new Error(`no archetype named "${name}"`)
+  return found
 }
 
 export interface Footprint {
@@ -180,6 +321,9 @@ export function placeBuilding(
   { x, y, w, h }: Footprint,
   id: number,
   rng: Rng,
+  /** Where the door should face — the settlement's centre, where its roads are.
+      Defaults to the middle of the map, which is only right for a one-town map. */
+  towards?: { x: number; y: number },
 ): void {
   const segments = archetype.storeys * SEGMENTS_PER_STOREY
   for (let ty = y; ty < y + h; ty++) {
@@ -202,7 +346,7 @@ export function placeBuilding(
 
   // The doorway faces the street: whichever side of the building is nearest the
   // map centre, since that is where the roads run.
-  const door = doorSide(grid, { x, y, w, h })
+  const door = doorSide(towards ?? { x: grid.width / 2, y: grid.height / 2 }, { x, y, w, h })
   const doorAt =
     door === 'north' || door === 'south' ? x + Math.floor(w / 2) : y + Math.floor(h / 2)
 
@@ -272,10 +416,12 @@ function isDoorTile(position: number, doorStart: number): boolean {
   return position === doorStart
 }
 
-function doorSide(grid: Grid, { x, y, w, h }: Footprint): 'north' | 'south' | 'east' | 'west' {
-  const centre = grid.width / 2
-  const dx = x + w / 2 - centre
-  const dy = y + h / 2 - centre
+function doorSide(
+  towards: { x: number; y: number },
+  { x, y, w, h }: Footprint,
+): 'north' | 'south' | 'east' | 'west' {
+  const dx = x + w / 2 - towards.x
+  const dy = y + h / 2 - towards.y
 
   // Face the road: the dominant axis decides which way the front of the building
   // looks, and the sign decides which end.

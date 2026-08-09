@@ -1,6 +1,7 @@
 import { TILE_H, TILE_W } from '@/render/iso'
 import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
+import { WallStyle } from '@/world/buildings'
 import { LampCondition, Prop, PROP_VARIANTS, type PropId } from '@/world/props'
 import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
 
@@ -126,6 +127,10 @@ const ROOF_COLOURS: readonly string[] = [
   '#5c6675',
   '#4a5750',
   '#6b6152',
+  /** Weathered aluminium: trailers and garages. */
+  '#83878b',
+  /** Oxblood barn iron. */
+  '#74423a',
 ]
 
 interface Palette {
@@ -700,6 +705,330 @@ function drawLampPost(variant: number): HTMLCanvasElement {
   return element
 }
 
+/**
+ * A low post-and-rail fence filling a wall slot.
+ *
+ * Same parallelogram geometry as the placeholder wall, but only the bottom
+ * quarter is used — the rest of the course stays transparent, which is what makes
+ * it read as a fence rather than a wall. Weathered grey: nobody has painted
+ * anything here for years.
+ */
+function drawFence(side: WallSideId): HTMLCanvasElement {
+  const [element, ctx] = canvas(WALL_W, WALL_H)
+
+  const rise = TILE_H / 2
+  const baseLeft = side === WallSide.West ? WALL_H : WALL_H - rise
+  const baseRight = side === WallSide.West ? WALL_H - rise : WALL_H
+
+  const height = 26
+  const posts = 4
+
+  const wood = side === WallSide.West ? '#6e675c' : '#7b746a'
+  const dark = '#57514a'
+
+  // Rails first, so posts overlap them.
+  ctx.strokeStyle = wood
+  ctx.lineWidth = 3
+  for (const at of [0.45, 0.8]) {
+    ctx.beginPath()
+    ctx.moveTo(2, baseLeft - height * at)
+    ctx.lineTo(WALL_W - 2, baseRight - height * at)
+    ctx.stroke()
+  }
+
+  ctx.fillStyle = dark
+  for (let i = 0; i < posts; i++) {
+    const t = (i + 0.5) / posts
+    const x = t * WALL_W
+    const base = baseLeft + (baseRight - baseLeft) * t
+    ctx.fillRect(x - 2, base - height, 4, height)
+  }
+
+  return element
+}
+
+/**
+ * A dead car.
+ *
+ * Drawn as three stacked iso boxes — body, cabin, and the dark band of the
+ * windows — because at this scale silhouette is everything and detail is noise.
+ * Variant selects orientation to match the road it sits on, then paint; every
+ * colour is faded and half of them are simply rust.
+ */
+function drawCarWreck(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  const alongX = variant % 2 === 0
+  const paints = ['#6d5a4a', '#5a6066', '#5d6b5e', '#6b5548', '#4f5a68']
+  const paint = paints[Math.floor(variant / 2) % paints.length] ?? '#6d5a4a'
+
+  groundShadow(ctx, 26, 0.3)
+
+  // Unit vectors of the two iso axes: the long axis follows the road.
+  const [lx, ly] = alongX ? [1, 0.5] : [-1, 0.5]
+  const [wx, wy] = alongX ? [-1, 0.5] : [1, 0.5]
+
+  const long = 26
+  const wide = 12
+
+  const box = (
+    h0: number,
+    h1: number,
+    l0: number,
+    l1: number,
+    w0: number,
+    w1: number,
+    fill: string,
+    shade: string,
+  ): void => {
+    // Top face of a box between fractional extents of the footprint.
+    const at = (l: number, w: number, h: number): [number, number] => [
+      cx + lx * l * long + wx * w * wide,
+      groundY - h + (ly * l * long + wy * w * wide) * 0.9,
+    ]
+    const top: readonly (readonly [number, number])[] = [
+      [l0, w0],
+      [l1, w0],
+      [l1, w1],
+      [l0, w1],
+    ]
+    ctx.fillStyle = fill
+    ctx.beginPath()
+    top.forEach(([l, w], i) => {
+      const [px, py] = at(l, w, h1)
+      if (i === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    })
+    ctx.closePath()
+    ctx.fill()
+
+    // The two visible sides, darker.
+    ctx.fillStyle = shade
+    for (const [[la, wa], [lb, wb]] of [
+      [
+        [l0, w1],
+        [l1, w1],
+      ],
+      [
+        [l1, w0],
+        [l1, w1],
+      ],
+    ] as const) {
+      ctx.beginPath()
+      const [ax, ay] = at(la, wa, h1)
+      const [bx, by] = at(lb, wb, h1)
+      const [cxx, cy] = at(lb, wb, h0)
+      const [dx, dy] = at(la, wa, h0)
+      ctx.moveTo(ax, ay)
+      ctx.lineTo(bx, by)
+      ctx.lineTo(cxx, cy)
+      ctx.lineTo(dx, dy)
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+
+  const darken = (hex: string, f: number): string => {
+    const n = parseInt(hex.slice(1), 16)
+    const c = (s: number) => Math.round(((n >> s) & 0xff) * f)
+    return `rgb(${String(c(16))}, ${String(c(8))}, ${String(c(0))})`
+  }
+
+  // Body sits just off the ground — the tyres are long gone.
+  box(2, 12, -1, 1, -1, 1, paint, darken(paint, 0.62))
+  // Cabin, set back from the nose.
+  box(12, 20, -0.55, 0.7, -0.75, 0.75, darken(paint, 0.85), darken(paint, 0.5))
+  // Window band.
+  box(13, 18, -0.5, 0.62, -0.72, 0.72, '#20242b', '#181b21')
+
+  // Rust bloom across everything, heavier low down.
+  let seed = 0x7f4a7c15 ^ Math.imul(variant + 1, 0x9e3779b9)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+  ctx.fillStyle = 'rgba(96, 58, 34, 0.5)'
+  for (let i = 0; i < 26; i++) {
+    const px = cx + (random() - 0.5) * long * 2.1
+    const py = groundY - 4 - random() * 16
+    ctx.fillRect(px, py, 1 + random() * 2.5, 1 + random() * 2)
+  }
+
+  return element
+}
+
+/** A condenser unit: a squat ribbed box with a fan circle on top. */
+function drawACUnit(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 10, 0.24)
+
+  const grey = variant % 2 === 0 ? '#9aa0a4' : '#8b8f92'
+  const w = 18
+  const h = 15
+
+  // Front and side faces of a small box.
+  ctx.fillStyle = grey
+  ctx.beginPath()
+  ctx.moveTo(cx - w, groundY - 4 - h + w * 0.5)
+  ctx.lineTo(cx, groundY - h)
+  ctx.lineTo(cx, groundY)
+  ctx.lineTo(cx - w, groundY - 4 + w * 0.5 - 2)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.fillStyle = '#767b7f'
+  ctx.beginPath()
+  ctx.moveTo(cx, groundY - h)
+  ctx.lineTo(cx + w, groundY - 4 - h + w * 0.5)
+  ctx.lineTo(cx + w, groundY - 4 + w * 0.5 - 2)
+  ctx.lineTo(cx, groundY)
+  ctx.closePath()
+  ctx.fill()
+
+  // Top with the fan.
+  ctx.fillStyle = '#a8adb1'
+  ctx.beginPath()
+  ctx.moveTo(cx, groundY - h)
+  ctx.lineTo(cx - w, groundY - 4 - h + w * 0.5)
+  ctx.lineTo(cx, groundY - 8 - h + w)
+  ctx.lineTo(cx + w, groundY - 4 - h + w * 0.5)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.strokeStyle = '#5f6468'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.ellipse(cx, groundY - h - 4 + w * 0.5, 9, 4.5, 0, 0, Math.PI * 2)
+  ctx.stroke()
+
+  // Vent ribs on the front face.
+  ctx.strokeStyle = 'rgba(60, 64, 68, 0.6)'
+  ctx.lineWidth = 1
+  for (let i = 0; i < 4; i++) {
+    const y0 = groundY - h + 3 + i * 3
+    ctx.beginPath()
+    ctx.moveTo(cx - w + 3, y0 + w * 0.5 - 4)
+    ctx.lineTo(cx - 2, y0)
+    ctx.stroke()
+  }
+
+  return element
+}
+
+/** Bare rock, half-buried. */
+function drawBoulder(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  let seed = 0x94d049bb ^ Math.imul(variant + 1, 0x85ebca6b)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+
+  const width = 14 + random() * 12
+  const height = 10 + random() * 8
+
+  groundShadow(ctx, width * 0.9, 0.26)
+
+  // An irregular lump: a distorted ellipse of a handful of points.
+  const points: [number, number][] = []
+  const lobes = 7
+  for (let i = 0; i < lobes; i++) {
+    const angle = (i / lobes) * Math.PI * 2
+    const r = 0.75 + random() * 0.35
+    points.push([
+      cx + Math.cos(angle) * width * r,
+      groundY - height * 0.55 + Math.sin(angle) * height * r * 0.6,
+    ])
+  }
+
+  ctx.fillStyle = variant % 2 === 0 ? '#6f6a60' : '#67645e'
+  ctx.beginPath()
+  points.forEach(([px, py], i) => {
+    if (i === 0) ctx.moveTo(px, py)
+    else ctx.lineTo(px, py)
+  })
+  ctx.closePath()
+  ctx.fill()
+
+  // Lit top-left, shaded lower-right: the same sun everything else claims.
+  ctx.fillStyle = 'rgba(255, 244, 214, 0.16)'
+  ctx.beginPath()
+  ctx.ellipse(
+    cx - width * 0.3,
+    groundY - height * 0.75,
+    width * 0.45,
+    height * 0.35,
+    -0.4,
+    0,
+    Math.PI * 2,
+  )
+  ctx.fill()
+  ctx.fillStyle = 'rgba(20, 18, 14, 0.25)'
+  ctx.beginPath()
+  ctx.ellipse(
+    cx + width * 0.35,
+    groundY - height * 0.3,
+    width * 0.4,
+    height * 0.3,
+    0.3,
+    0,
+    Math.PI * 2,
+  )
+  ctx.fill()
+
+  return element
+}
+
+/** An airfield windsock on its pole, hanging slack. */
+function drawWindsock(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 8, 0.2)
+
+  const height = 88
+
+  ctx.strokeStyle = '#4a4e55'
+  ctx.lineWidth = 3.5
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx, groundY)
+  ctx.lineTo(cx, groundY - height)
+  ctx.stroke()
+
+  // The sock droops: no wind blows here yet, and a limp sock says so.
+  const sag = variant % 2 === 0 ? 1 : -1
+  ctx.fillStyle = '#a3492f'
+  ctx.beginPath()
+  ctx.moveTo(cx, groundY - height)
+  ctx.quadraticCurveTo(cx + 12 * sag, groundY - height + 4, cx + 15 * sag, groundY - height + 26)
+  ctx.lineTo(cx + 9 * sag, groundY - height + 27)
+  ctx.quadraticCurveTo(cx + 5 * sag, groundY - height + 10, cx, groundY - height + 6)
+  ctx.closePath()
+  ctx.fill()
+
+  // Faded band.
+  ctx.fillStyle = 'rgba(226, 218, 202, 0.7)'
+  ctx.beginPath()
+  ctx.moveTo(cx + 10 * sag, groundY - height + 14)
+  ctx.lineTo(cx + 13.5 * sag, groundY - height + 18)
+  ctx.lineTo(cx + 12 * sag, groundY - height + 23)
+  ctx.lineTo(cx + 8.5 * sag, groundY - height + 19)
+  ctx.closePath()
+  ctx.fill()
+
+  return element
+}
+
 const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElement>> = {
   [Prop.None]: drawScrub,
   [Prop.DeadTree]: drawDeadTree,
@@ -709,6 +1038,10 @@ const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElem
   [Prop.Sagebrush]: drawSagebrush,
   [Prop.Scrub]: drawScrub,
   [Prop.LampPost]: drawLampPost,
+  [Prop.CarWreck]: drawCarWreck,
+  [Prop.AirConditioner]: drawACUnit,
+  [Prop.Boulder]: drawBoulder,
+  [Prop.Windsock]: drawWindsock,
 }
 
 const SKIN = '#d7a67c'
@@ -1085,6 +1418,14 @@ export function buildSprites(
       )
     }
   })
+
+  // The fence style has no sheet: it is drawn in code, one segment tall, and a
+  // gate in it is a Doorway — which at that height draws nothing, leaving a gap.
+  for (const side of [WallSide.West, WallSide.North] as const) {
+    const fence = drawFence(side)
+    walls.set(wallSpriteKey(Wall.Solid, side, WallStyle.Fence), fence)
+    walls.set(wallSpriteKey(Wall.Window, side, WallStyle.Fence), fence)
+  }
 
   const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))
   const props = new Map<PropId, readonly HTMLCanvasElement[]>()

@@ -13,8 +13,10 @@ export const District = {
   Residential: 0,
   Commercial: 1,
   Industrial: 2,
-  /** Open land north of the town. Nothing is built here. */
+  /** Open land. Nothing is built here by the block placer. */
   Countryside: 3,
+  /** Dense rows of single-storey homes on dirt lots. */
+  TrailerPark: 4,
 } as const
 
 export type DistrictId = (typeof District)[keyof typeof District]
@@ -30,6 +32,7 @@ const DEFS: Readonly<Record<DistrictId, DistrictDef>> = {
   [District.Commercial]: { name: 'commercial', lotFill: 0.82 },
   [District.Industrial]: { name: 'industrial', lotFill: 0.9 },
   [District.Countryside]: { name: 'countryside', lotFill: 0 },
+  [District.TrailerPark]: { name: 'trailer park', lotFill: 0.8 },
 }
 
 export function districtDef(id: DistrictId): DistrictDef {
