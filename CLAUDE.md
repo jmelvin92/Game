@@ -123,24 +123,26 @@ Simulation produces state; rendering reads it. Never the reverse.
 
 ### Branches
 
-`main` is always releasable, protected, and tagged. Never commit to it directly.
-
-This is enforced by GitHub, not by convention. The repository is public specifically so branch
-protection is available, and `enforce_admins` is on, so the rules apply to Joshua too — a direct
-push to `main` is refused server-side even with `--no-verify`. `main` advances only by merging a
-pull request whose `Verify` check passed. Force-pushes and branch deletion are refused outright,
-so published history cannot be rewritten: fix a bad commit with a revert, never a force-push.
+Two branches. That is the whole model.
 
 ```
-main  ──●───────●───────●        protected, tagged
-         \     / \     /
-          ●─●─●   ●─●─●          feature/* — short-lived, merged then deleted
+main  ──●───────────────●──────       protected. only ever receives merges from dev
+         \             /
+dev   ────●──●──●──●──●──●──●──       all work happens here
 ```
 
-Every unit of work: branch `feature/<short-name>` → commits → PR → CI green → merge → delete branch.
+- **`dev`** — where everything is built. Commit and push freely; breaking it costs nothing.
+- **`main`** — known-good, tagged. Merged from `dev` when a phase is finished and green.
 
-There is no long-lived `dev` branch. That convention exists to stage integration between multiple
-developers; solo it is a permanent merge tax that buys nothing.
+`main` is protected by GitHub with `enforce_admins` on, so a direct push is refused server-side even
+with `--no-verify`, and force-pushes and deletion are refused outright. Merging `dev` into `main` is
+one command: `gh pr create --base main --head dev && gh pr merge --merge`.
+
+Because published history cannot be rewritten, undo a bad commit on `main` with a revert, never a
+force-push.
+
+Short `feature/*` branches off `dev` are fine for anything risky, but they are optional — do not
+turn a two-line change into a ceremony.
 
 ### Commits
 
