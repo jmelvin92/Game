@@ -1,0 +1,83 @@
+#!/bin/sh
+#
+# commit-msg — enforces the commit format described in CLAUDE.md §6.
+#
+# This project keeps a deliberately lean log: no architecture decision records and
+# no devlog. That makes commit bodies the ONLY place the reasoning behind a change
+# survives. A diff always shows what changed and can never show what it was for.
+#
+# Commit discipline is exactly the kind of thing that decays silently when nobody
+# checks, so it is enforced here rather than left to good intentions.
+
+set -eu
+
+# Character ranges in `case` patterns follow the locale's collation order, and the
+# default macOS collation interleaves cases (aAbBcC...), so a naive [A-Z] also
+# matches lowercase. Pinning the locale keeps every comparison below predictable.
+LC_ALL=C
+export LC_ALL
+
+msg_file="$1"
+
+# Git's comment lines are not part of the message.
+msg=$(sed '/^#/d' "$msg_file")
+subject=$(printf '%s\n' "$msg" | sed -n '1p')
+second_line=$(printf '%s\n' "$msg" | sed -n '2p')
+body=$(printf '%s\n' "$msg" | sed '1,2d' | sed '/^[[:space:]]*$/d')
+
+# Machine-generated commits do not follow the convention and are exempt.
+case "$subject" in
+'Merge '* | 'Revert '* | 'fixup!'* | 'squash!'*) exit 0 ;;
+esac
+
+TYPES='feat|fix|perf|refactor|test|docs|build|ci|chore'
+
+fail() {
+  printf '\n  ✗ Commit rejected: %s\n\n' "$1" >&2
+  printf '  Format:  type(scope): subject\n' >&2
+  printf '  Types:   %s\n\n' "$(printf '%s' "$TYPES" | tr '|' ' ')" >&2
+  printf '  Subject says WHAT changed. Body says WHY.\n' >&2
+  printf '  Example:\n\n' >&2
+  printf '      feat(nav): cache flow fields per destination tile\n\n' >&2
+  printf '      A* ran per-entity per-frame, which collapsed to ~8fps once\n' >&2
+  printf '      more than about 40 actors shared a destination.\n\n' >&2
+  printf '  See CLAUDE.md §6.\n\n' >&2
+  exit 1
+}
+
+if [ -z "$subject" ]; then
+  fail 'the message is empty'
+fi
+
+if ! printf '%s' "$subject" | grep -Eq "^($TYPES)(\([a-z0-9./-]+\))?: .+"; then
+  fail "subject does not match 'type(scope): subject'"
+fi
+
+if [ "${#subject}" -gt 72 ]; then
+  fail "subject is ${#subject} characters; keep it to 72 or fewer"
+fi
+
+description=${subject#*: }
+
+case "$description" in
+*.) fail 'subject must not end with a period' ;;
+[[:upper:]]*) fail 'subject must start lowercase' ;;
+esac
+
+# `chore` and `docs` are routine enough that demanding a rationale would just
+# produce filler. Everything else changes behaviour and needs its reasoning kept.
+type=$(printf '%s' "$subject" | sed -E 's/^([a-z]+).*/\1/')
+
+case "$type" in
+chore | docs) ;;
+*)
+  if [ -z "$body" ]; then
+    fail "a '$type' commit needs a body explaining why the change was made"
+  fi
+  if [ -n "$second_line" ]; then
+    fail 'leave a blank line between the subject and the body'
+  fi
+  ;;
+esac
+
+exit 0
