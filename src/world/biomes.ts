@@ -86,12 +86,14 @@ export function biomeAt(
   // Dithered thresholds: a per-tile nudge means the border between two biomes is
   // a ragged mix a few tiles wide rather than a drawn line.
   //
-  // The cut points were set by measuring the field's quantiles rather than by
-  // assuming it is centred on 0.5 — it is not, this fbm's median is nearer 0.6 —
-  // and land at this seed divides roughly 15% desert, 55% grassland, 30% forest.
+  // The cut points were set by measuring the field's quantiles *over land* rather
+  // than assuming it is centred on 0.5. It is not — this fbm's median is nearer
+  // 0.6, and land sits in its wetter region besides, so thresholds placed around
+  // 0.5 gave an island that was 1% desert. Land at this seed divides roughly 15%
+  // desert, 55% grassland, 30% forest.
   const nudge = (hash2d(x, y, seed + 13) - 0.5) * 0.06
 
-  if (moisture + nudge < 0.46) return Biome.Desert
-  if (moisture + nudge > 0.67) return Biome.Forest
+  if (moisture + nudge < 0.51) return Biome.Desert
+  if (moisture + nudge > 0.66) return Biome.Forest
   return Biome.Grassland
 }
