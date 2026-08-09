@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# pre-push — the last gate before anything leaves this machine.
+#
+# Runs the same checks as CI, so a green run here means a green pull request.
+# Also refuses direct pushes to main: main advances only by merging a pull
+# request that CI has passed. See CLAUDE.md §6.
+
+set -eu
+
+ZERO='0000000000000000000000000000000000000000'
+run_checks='false'
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  # Branch deletions have nothing to verify.
+  [ "$local_sha" = "$ZERO" ] && continue
+
+  if [ "$remote_ref" = 'refs/heads/main' ]; then
+    printf '\n  ✗ Push rejected: main does not take direct pushes.\n\n' >&2
+    printf '  main is always releasable, so it advances only by merging a\n' >&2
+    printf '  pull request that CI has passed.\n\n' >&2
+    printf '      git checkout -b feature/<short-name>\n' >&2
+    printf '      git push -u origin feature/<short-name>\n' >&2
+    printf '      gh pr create\n\n' >&2
+    printf '  See CLAUDE.md §6.\n\n' >&2
+    exit 1
+  fi
+
+  # Tag pushes carry no new code to check.
+  case "$remote_ref" in refs/heads/*) run_checks='true' ;; esac
+done
+
+[ "$run_checks" = 'true' ] || exit 0
+
+printf '\n  Running pre-push checks (the same ones CI runs)...\n\n'
+
+fail() {
+  printf '\n  ✗ %s failed. Push aborted.\n\n' "$1" >&2
+  printf '  Fix it and push again. Do not reach for --no-verify: these are the\n' >&2
+  printf '  same checks CI runs, so bypassing them only moves the failure.\n\n' >&2
+  exit 1
+}
+
+printf '  → typecheck\n'
+npm run --silent typecheck || fail 'Typecheck'
+
+printf '  → lint\n'
+npm run --silent lint || fail 'Lint'
+
+printf '  → tests\n'
+npm run --silent test || fail 'Tests'
+
+printf '\n  ✓ All checks passed.\n\n'
+exit 0
