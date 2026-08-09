@@ -3,8 +3,10 @@ import { startLoop } from '@/core/loop'
 import { createActor } from '@/entity/actor'
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
+import { TILE_H, TILE_W } from '@/render/iso'
 import { drawHud, renderScene } from '@/render/renderer'
 import { buildSprites } from '@/render/sprites'
+import { loadTileSheets } from '@/render/textures'
 import { createSandbox, SPAWN } from '@/world/sandbox'
 
 /**
@@ -57,8 +59,25 @@ window.addEventListener('resize', resize)
 const grid = createSandbox()
 const actor = createActor(SPAWN.x, SPAWN.y)
 const camera = createCamera(actor.x, actor.y)
-const sprites = buildSprites()
 const input = createInput()
+
+// Textures must be decoded and keyed before the first frame, so the world never
+// flashes untextured. Sheets load concurrently; this is a few hundred milliseconds.
+const sheets = await loadTileSheets(
+  {
+    grass: '/tiles/grass.png',
+    rocky: '/tiles/rocky.png',
+    stones: '/tiles/stones.png',
+    dry: '/tiles/dry.png',
+    stone: '/tiles/stone.png',
+    tile: '/tiles/tile.png',
+    wood: '/tiles/wood.png',
+  },
+  TILE_W,
+  TILE_H,
+)
+
+const sprites = buildSprites(sheets)
 
 if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser

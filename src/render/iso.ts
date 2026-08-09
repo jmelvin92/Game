@@ -18,14 +18,19 @@
  * including that the round trip is exact for negative coordinates.
  */
 
-export const TILE_W = 64
-export const TILE_H = 32
+/**
+ * Set by the art: the Screaming Brain Studios packs render true 2:1 isometric tiles
+ * at 128×64. Because the ratio matches what was here before, adopting them changed
+ * these numbers and nothing else in this file.
+ */
+export const TILE_W = 128
+export const TILE_H = 64
 
 const HALF_W = TILE_W / 2
 const HALF_H = TILE_H / 2
 
 /** Vertical pixels per unit of tile height. */
-export const TILE_Z = 32
+export const TILE_Z = 64
 
 export interface ScreenPoint {
   readonly sx: number

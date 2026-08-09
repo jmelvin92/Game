@@ -1,4 +1,5 @@
 import { TILE_H, TILE_W, TILE_Z } from '@/render/iso'
+import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
 
 /**
@@ -19,10 +20,17 @@ export const FACINGS = 8
 
 const WALL_SPRITE_H = TILE_H + TILE_Z
 
-const PERSON_W = 40
-const PERSON_H = 56
+/**
+ * The character is drawn against a 64-wide tile and scaled to whatever the tiles
+ * actually are, so changing tile size does not silently leave them the wrong size
+ * relative to the world.
+ */
+const PERSON_SCALE = TILE_W / 64
+
+const PERSON_W = 40 * PERSON_SCALE
+const PERSON_H = 56 * PERSON_SCALE
 /** Where the character's feet sit inside their sprite, so it can be anchored. */
-export const PERSON_ANCHOR = { x: PERSON_W / 2, y: 50 } as const
+export const PERSON_ANCHOR = { x: PERSON_W / 2, y: 50 * PERSON_SCALE } as const
 
 export interface Sprites {
   /** Ground tiles, indexed by tile id. */
@@ -161,8 +169,12 @@ const SHOES = '#23262c'
 function drawPerson(screenDirX: number, screenDirY: number): HTMLCanvasElement {
   const [element, ctx] = canvas(PERSON_W, PERSON_H)
 
-  const cx = PERSON_ANCHOR.x
-  const feet = PERSON_ANCHOR.y
+  // Drawn once at the reference size and scaled by the transform, so the shapes
+  // stay crisp instead of being upscaled after rasterising.
+  ctx.scale(PERSON_SCALE, PERSON_SCALE)
+
+  const cx = 20
+  const feet = 50
   const facingCamera = screenDirY > 0.01
   const facingAway = screenDirY < -0.01
 
@@ -240,10 +252,39 @@ export function facingIndex(facingX: number, facingY: number): number {
   return ((Math.round(angle / step) % FACINGS) + FACINGS) % FACINGS
 }
 
-export function buildSprites(): Sprites {
+/**
+ * Which sheet and which tile within it each ground type uses.
+ *
+ * This mapping is the whole reason `world/` never learned what a road looks like:
+ * changing the city's surfaces is an edit to this table, not to the simulation.
+ */
+interface TextureRef {
+  readonly sheet: string
+  readonly index: number
+}
+
+const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
+  [Tile.Grass, { sheet: 'grass', index: 0 }],
+  // Nothing in the floor pack is true asphalt — it leans natural and fantasy — so
+  // the road uses the darkest grey available. Real road surfaces are in the Town pack.
+  [Tile.Road, { sheet: 'stones', index: 10 }],
+  [Tile.Sidewalk, { sheet: 'tile', index: 2 }],
+  [Tile.Floor, { sheet: 'wood', index: 0 }],
+])
+
+/**
+ * @param sheets loaded tile sheets; any tile without one falls back to the
+ *   code-drawn placeholder, so a missing or failed texture degrades to something
+ *   visible rather than a hole in the world.
+ */
+export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
   const ground = new Map<TileId, HTMLCanvasElement>()
+
   for (const [id, palette] of GROUND_PALETTES) {
-    ground.set(id, drawGroundTile(palette))
+    const ref = GROUND_TEXTURES.get(id)
+    const textured = ref === undefined ? undefined : sheets.get(ref.sheet)?.tiles[ref.index]
+
+    ground.set(id, textured ?? drawGroundTile(palette))
   }
 
   const standing = new Map<TileId, HTMLCanvasElement>([[Tile.Wall, drawWall()]])
