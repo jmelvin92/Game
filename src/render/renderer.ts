@@ -215,13 +215,16 @@ export function renderScene(
   // Which animation is playing follows from what the actor is doing, so the
   // renderer never has to be told — one less thing to keep in step.
   const animation = actor.moving ? (actor.running ? Animation.Run : Animation.Walk) : Animation.Idle
-  const { frames, frameTime } = ANIMATIONS[animation]
+  const { frameTime } = ANIMATIONS[animation]
 
   const facings = sprites.character.get(animation)
+  const cells = facings?.[facingIndex(actor.facingX, actor.facingY)]
+  // Frame count comes from the loaded art rather than the table, so a sheet that
+  // holds a different number than expected still plays instead of drawing nothing.
   const person =
-    facings?.[facingIndex(actor.facingX, actor.facingY)]?.[
-      Math.floor(scene.time / frameTime) % frames
-    ]
+    cells === undefined || cells.length === 0
+      ? undefined
+      : cells[Math.floor(scene.time / frameTime) % cells.length]
 
   if (person !== undefined) {
     const { sx, sy } = worldToScreen(actor.x, actor.y)

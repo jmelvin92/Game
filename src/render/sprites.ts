@@ -64,7 +64,7 @@ export const ANIMATIONS: Readonly<Record<AnimationId, AnimationDef>> = {
   // Frame counts are per sheet, and they differ: the supplied idle and walk sheets
   // hold four frames per direction, the run sheet six. Detected from the art rather
   // than assumed, because the three do not match.
-  [Animation.Idle]: { frames: 4, frameTime: 0.3 },
+  [Animation.Idle]: { frames: 25, frameTime: 0.09 },
   [Animation.Walk]: { frames: 4, frameTime: 0.14 },
   // A run cycle turns over faster than a walk, which is most of what sells it.
   [Animation.Run]: { frames: 6, frameTime: 0.07 },
@@ -74,23 +74,21 @@ export const ANIMATIONS: Readonly<Record<AnimationId, AnimationDef>> = {
 export const SHEET_ROWS = 8
 
 /**
- * Source frames are 196×146; the game wants a character about 110px tall so they
- * read correctly against 128×64 tiles and a one-storey wall.
+ * Sheets are built to their final size by `tools/build_character_sheets.py`, so no
+ * scaling is applied at load. Kept as a constant because art from elsewhere will
+ * arrive at whatever size it likes.
  */
-export const CHARACTER_SCALE = 0.75
+export const CHARACTER_SCALE = 1
 
 /**
  * Which sheet row holds each facing.
  *
- * {@link facingIndex} numbers directions from screen-east going clockwise, while
- * the art runs north-first, also clockwise: N, NE, E, SE, S, SW, W, NW. This table
- * is the whole of the difference, so re-ordering art later means editing one line
- * rather than hunting through the renderer.
- *
- * Verified against the running game rather than read off the sheet — north looked
- * right either way, and only the east/west pair gave the ordering away.
+ * Sheets are built by `tools/build_character_sheets.py` with a row per facing in
+ * exactly the order {@link facingIndex} numbers them, so this is the identity. It
+ * stays as a table because art from elsewhere will not follow that order, and one
+ * line here beats translating inside the renderer.
  */
-export const SHEET_ROW_FOR_FACING: readonly number[] = [2, 3, 4, 5, 6, 7, 0, 1]
+export const SHEET_ROW_FOR_FACING: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 7]
 
 export interface Sprites {
   /** Ground tiles, indexed by tile id. */
@@ -481,7 +479,10 @@ export function buildSprites(
 
   for (const id of [Animation.Idle, Animation.Walk, Animation.Run] as const) {
     const { frames } = ANIMATIONS[id]
-    const sheet = characterSheets?.get(id)
+    // An animation with no art of its own borrows idle's. A character who stands
+    // still while walking is odd; a character who turns into somebody else is
+    // worse, and that is what falling straight through to the placeholder does.
+    const sheet = characterSheets?.get(id) ?? characterSheets?.get(Animation.Idle)
 
     const byFacing: HTMLCanvasElement[][] = []
     for (let facing = 0; facing < FACINGS; facing++) {
