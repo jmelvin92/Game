@@ -102,8 +102,8 @@ export interface Sprites {
   readonly roofs: readonly HTMLCanvasElement[]
   /** Vegetation: species, then variant. */
   readonly props: ReadonlyMap<PropId, readonly HTMLCanvasElement[]>
-  /** The character: animation → facing (see {@link facingIndex}) → frame. */
-  readonly character: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
+  /** Characters by name, then animation → facing (see {@link facingIndex}) → frame. */
+  readonly characters: ReadonlyMap<string, CharacterSheets>
 }
 
 /** Key for {@link Sprites.walls}. */
@@ -900,9 +900,12 @@ function slopesLikeWestWall(tile: HTMLCanvasElement): boolean {
   return topOpaque(tile.width - 1 - inset) < topOpaque(inset)
 }
 
+/** One character's art: animation, then facing, then frame. */
+export type CharacterSheets = ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
+
 export function buildSprites(
   sheets: ReadonlyMap<string, TileSheet>,
-  characterSheets?: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>,
+  loaded?: ReadonlyMap<string, CharacterSheets>,
 ): Sprites {
   const ground = new Map<TileId, readonly HTMLCanvasElement[]>()
 
@@ -996,10 +999,10 @@ export function buildSprites(
     )
   }
 
-  // One set of frames per animation per facing. Placeholder art, generated to the
-  // same shape real sprite sheets arrive in, so swapping them is a change of source
-  // rather than a change of structure.
-  const character = new Map<AnimationId, readonly (readonly HTMLCanvasElement[])[]>()
+  // One set of frames per animation per facing, per character. Anything without
+  // art of its own falls back to the drawn placeholder, so a failed load leaves a
+  // visible figure rather than nothing at all.
+  const characters = new Map<string, CharacterSheets>()
   const step = (Math.PI * 2) / FACINGS
 
   const swings: Readonly<Record<AnimationId, number>> = {
@@ -1008,35 +1011,40 @@ export function buildSprites(
     [Animation.Run]: 4.2,
   }
 
-  for (const id of [Animation.Idle, Animation.Walk, Animation.Run] as const) {
-    const { frames } = ANIMATIONS[id]
-    // An animation with no art of its own borrows idle's. A character who stands
-    // still while walking is odd; a character who turns into somebody else is
-    // worse, and that is what falling straight through to the placeholder does.
-    const sheet = characterSheets?.get(id) ?? characterSheets?.get(Animation.Idle)
+  const names = new Set(['player', ...(loaded?.keys() ?? [])])
 
-    const byFacing: HTMLCanvasElement[][] = []
-    for (let facing = 0; facing < FACINGS; facing++) {
-      // Real art is stored by sheet row, so the facing has to be translated first.
-      const row = sheet?.[SHEET_ROW_FOR_FACING[facing] ?? 0]
+  for (const name of names) {
+    const supplied = loaded?.get(name)
+    const character = new Map<AnimationId, readonly (readonly HTMLCanvasElement[])[]>()
 
-      if (row !== undefined && row.length > 0) {
-        byFacing.push([...row])
-        continue
+    for (const id of [Animation.Idle, Animation.Walk, Animation.Run] as const) {
+      const { frames } = ANIMATIONS[id]
+      // An animation with no art of its own borrows idle's. A figure that stands
+      // still while moving is odd; one that turns into somebody else is worse.
+      const sheet = supplied?.get(id) ?? supplied?.get(Animation.Idle)
+
+      const byFacing: HTMLCanvasElement[][] = []
+      for (let facing = 0; facing < FACINGS; facing++) {
+        const row = sheet?.[SHEET_ROW_FOR_FACING[facing] ?? 0]
+
+        if (row !== undefined && row.length > 0) {
+          byFacing.push([...row])
+          continue
+        }
+
+        const angle = facing * step
+        const cells: HTMLCanvasElement[] = []
+        for (let frame = 0; frame < frames; frame++) {
+          cells.push(drawPerson(Math.cos(angle), Math.sin(angle), frame / frames, swings[id]))
+        }
+        byFacing.push(cells)
       }
 
-      // No sheet: fall back to the drawn placeholder, so a missing or failed load
-      // leaves a visible character rather than nothing at all.
-      const angle = facing * step
-      const cells: HTMLCanvasElement[] = []
-      for (let frame = 0; frame < frames; frame++) {
-        cells.push(drawPerson(Math.cos(angle), Math.sin(angle), frame / frames, swings[id]))
-      }
-      byFacing.push(cells)
+      character.set(id, byFacing)
     }
 
-    character.set(id, byFacing)
+    characters.set(name, character)
   }
 
-  return { ground, walls, roofs, props, character }
+  return { ground, walls, roofs, props, characters }
 }

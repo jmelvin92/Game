@@ -1,9 +1,11 @@
 import { createAudio } from '@/core/audio'
 import { createInput } from '@/core/input'
+import { createRng } from '@/core/rng'
 import { createClock } from '@/core/time'
 import { startLoop } from '@/core/loop'
 import { createActor } from '@/entity/actor'
 import { createFootsteps } from '@/entity/footsteps'
+import { createHunterPack } from '@/entity/hunters'
 import { canChannel, channel, createVitals, updateVitals } from '@/entity/vitals'
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
@@ -23,7 +25,7 @@ import {
 } from '@/render/sprites'
 import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
 import { drainCharges } from '@/world/grid'
-import { createSandbox, SPAWN } from '@/world/sandbox'
+import { createSandbox, SANDBOX_SEED, SPAWN } from '@/world/sandbox'
 import { deviceDef, LampCondition, nearestDevice } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 
@@ -166,24 +168,40 @@ const sheets = new Map([...groundSheets, ...wallSheets])
 
 // Character art. If a sheet is missing the placeholder character is used instead,
 // so a failed load never leaves the player with nothing to control.
-const characterSheets = new Map<AnimationId, readonly (readonly HTMLCanvasElement[])[]>()
+type CharacterFrames = ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
+
+// Which animations each character has art for. The White Eyes never walk — they
+// stand, or they come for you.
+const CHARACTERS: Readonly<Record<string, readonly AnimationId[]>> = {
+  player: [Animation.Idle, Animation.Walk, Animation.Run],
+  'white-eyes': [Animation.Idle, Animation.Run],
+}
+
+const characterSheets = new Map<string, CharacterFrames>()
 
 await Promise.all(
-  (
-    [
-      [Animation.Idle, '/sprites/idle.png'],
-      [Animation.Walk, '/sprites/walk.png'],
-      [Animation.Run, '/sprites/run.png'],
-    ] as const
-  ).map(async ([id, url]) => {
-    try {
-      characterSheets.set(
-        id,
-        await loadSpriteGrid(url, ANIMATIONS[id].frames, SHEET_ROWS, CHARACTER_SCALE),
-      )
-    } catch {
-      // Left out of the map; buildSprites falls back for this animation.
-    }
+  Object.entries(CHARACTERS).map(async ([name, animations]) => {
+    const frames = new Map<AnimationId, readonly (readonly HTMLCanvasElement[])[]>()
+
+    await Promise.all(
+      animations.map(async (id) => {
+        try {
+          frames.set(
+            id,
+            await loadSpriteGrid(
+              `/sprites/${name}-${id}.png`,
+              ANIMATIONS[id].frames,
+              SHEET_ROWS,
+              CHARACTER_SCALE,
+            ),
+          )
+        } catch {
+          // Left out; buildSprites falls back for this animation.
+        }
+      }),
+    )
+
+    if (frames.size > 0) characterSheets.set(name, frames)
   }),
 )
 
@@ -194,6 +212,43 @@ const sprites = buildSprites(sheets, characterSheets)
 let torchOn = true
 
 const vitals = createVitals()
+const hunters = createHunterPack()
+
+// One generator for everything that happens during play, seeded apart from the
+// world's, so a spawn cannot change how the town was built.
+const playRng = createRng(0x5eed ^ SANDBOX_SEED)
+
+/** Set when the player is caught. Everything stops and the cutscene plays. */
+let dead = false
+
+function die(): void {
+  if (dead) return
+  dead = true
+
+  hunters.clear()
+
+  const video = document.createElement('video')
+  video.src = '/video-death.mp4'
+  video.autoplay = true
+  video.playsInline = true
+  video.style.cssText =
+    'position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:10'
+  document.body.appendChild(video)
+
+  // The overlay stays after the video ends rather than returning to a frozen
+  // game behind it, so the run is unambiguously over.
+  video.addEventListener('ended', () => {
+    video.style.opacity = '0'
+    video.style.transition = 'opacity 1.2s'
+
+    const over = document.createElement('div')
+    over.textContent = 'reload to begin again'
+    over.style.cssText =
+      'position:fixed;inset:0;display:grid;place-items:center;z-index:11;' +
+      'background:#000;color:#6b7280;font:14px ui-monospace,monospace;letter-spacing:0.2em'
+    document.body.appendChild(over)
+  })
+}
 
 /** How far the gift reaches, in tiles. Close enough that you must walk to a lamp. */
 const CHANNEL_REACH = 2.2
@@ -231,7 +286,9 @@ if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
-  Object.defineProperty(window, 'game', { value: { grid, actor, camera, input, clock, vitals } })
+  Object.defineProperty(window, 'game', {
+    value: { grid, actor, camera, input, clock, vitals, hunters },
+  })
 }
 
 // Sound. Surfaces without a recording stay silent rather than borrowing another's,
@@ -269,8 +326,17 @@ startLoop(
 
     // Daylight is the only thing that restores the gift, so the cycle is what
     // paces the whole loop rather than a regeneration timer.
-    updateVitals(vitals, step, 1 - darknessAt(clock.fraction))
+    if (dead) return
+
+    const darkness = darknessAt(clock.fraction)
+
+    updateVitals(vitals, step, 1 - darkness)
     drainCharges(grid, step)
+
+    if (hunters.update(grid, actor, step, darkness, playRng)) die()
+
+    // The gift running the body down is its own end, separate from being caught.
+    if (vitals.health <= 0) die()
 
     const direction = input.direction()
     const wasX = actor.x
@@ -307,6 +373,7 @@ startLoop(
       dayFraction: clock.fraction,
       torch: torchOn,
       power: vitals.power,
+      hunters: hunters.hunters,
     })
 
     renderLighting(

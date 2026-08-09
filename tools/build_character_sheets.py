@@ -2,7 +2,8 @@
 """
 Turn an AutoSprite export into a sprite sheet the game can load.
 
-    python3 tools/build_character_sheets.py ~/Downloads/Jaxin-spritesheet.zip idle
+    python3 tools/build_character_sheets.py <export.zip> <name> idle walk run
+    python3 tools/build_character_sheets.py white-eyes.zip white-eyes idle run --height 162
 
 AutoSprite exports five directions — up, northeast, right, southeast, down — as
 separate folders of individual frames. The remaining three (northwest, west,
@@ -36,7 +37,11 @@ OUT_DIR = REPO / 'public' / 'sprites'
 # How tall the character should stand in the finished sheet, in pixels. Tiles are
 # 128x64 and one storey is 64px, so this puts an adult a little under two storeys —
 # the proportion that reads correctly against a wall and a doorway.
-TARGET_HEIGHT = 118
+#
+# Overridable per character with --height, because relative size is characterisation:
+# a creature that towers over the player reads as wrong before anything else about
+# it registers, and normalising everything to one height would throw that away.
+DEFAULT_HEIGHT = 118
 
 # Facings in the order `facingIndex` numbers them: east, then clockwise. Each entry
 # is the AutoSprite direction to draw it from, and whether to mirror it.
@@ -64,7 +69,7 @@ def frames_for(root: Path, animation: str, direction: str) -> list[Image.Image]:
     return [Image.open(p).convert('RGBA') for p in sorted(folder.glob('*.png'))]
 
 
-def build(zip_path: Path, animations: list[str]) -> None:
+def build(zip_path: Path, name: str, animations: list[str], height: int) -> None:
     with TemporaryDirectory() as tmp:
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(tmp)
@@ -106,12 +111,12 @@ def build(zip_path: Path, animations: list[str]) -> None:
         right = max(b[2] for b in boxes)
         bottom = max(b[3] for b in boxes)
 
-        scale = TARGET_HEIGHT / (bottom - top)
+        scale = height / (bottom - top)
         cell_w = max(1, round((right - left) * scale))
         cell_h = max(1, round((bottom - top) * scale))
 
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        print(f'shared cell {cell_w} x {cell_h}  (character {TARGET_HEIGHT}px tall)\n')
+        print(f'{name}: shared cell {cell_w} x {cell_h}  (character {height}px tall)\n')
 
         for animation, by_direction in loaded.items():
             frame_count = len(next(iter(by_direction.values())))
@@ -126,14 +131,25 @@ def build(zip_path: Path, animations: list[str]) -> None:
                         cell = ImageOps.mirror(cell)
                     sheet.paste(cell, (column * cell_w, row * cell_h), cell)
 
-            out = OUT_DIR / f'{animation}.png'
+            out = OUT_DIR / f'{name}-{animation}.png'
             sheet.save(out)
-            print(f'{animation:5} {frame_count} frames x {len(FACINGS)} facings'
+            print(f'  {animation:5} {frame_count} frames x {len(FACINGS)} facings'
                   f'  ->  {out.relative_to(REPO)}  ({sheet.size[0]} x {sheet.size[1]})')
-            print(f'      set ANIMATIONS.{animation}.frames = {frame_count}')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        sys.exit('usage: build_character_sheets.py <export.zip> <animation> [animation ...]')
-    build(Path(sys.argv[1]).expanduser(), sys.argv[2:])
+    args = sys.argv[1:]
+    height = DEFAULT_HEIGHT
+
+    if '--height' in args:
+        at = args.index('--height')
+        height = int(args[at + 1])
+        del args[at:at + 2]
+
+    if len(args) < 3:
+        sys.exit(
+            'usage: build_character_sheets.py <export.zip> <name> <animation> [...] '
+            '[--height N]'
+        )
+
+    build(Path(args[0]).expanduser(), args[1], args[2:], height)

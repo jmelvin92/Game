@@ -30,5 +30,6 @@ npm-debug.log*
 # Remove this entry once its origin is known.
 public/sprites/
 
-# Audio pending licence confirmation — see ATTRIBUTION.md.
+# Audio and cutscene pending licence confirmation — see ATTRIBUTION.md.
 public/audio/
+public/video-*.mp4

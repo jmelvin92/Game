@@ -1,4 +1,5 @@
 import type { Actor } from '@/entity/actor'
+import type { Hunter } from '@/entity/hunters'
 import { cameraOffset, type Camera } from '@/render/camera'
 import { depth, screenToWorld, TILE_H, TILE_W, TILE_Z, worldToScreen } from '@/render/iso'
 import {
@@ -46,6 +47,8 @@ export interface Scene {
   readonly torch: boolean
   /** 0 to 1. The torch dims with it, so running low is visible in the world. */
   readonly power: number
+  /** Everything hunting the player, drawn and sorted alongside them. */
+  readonly hunters: readonly Hunter[]
 }
 
 interface Bounds {
@@ -280,43 +283,13 @@ export function renderScene(
 
   // Which animation is playing follows from what the actor is doing, so the
   // renderer never has to be told — one less thing to keep in step.
-  const animation = actor.moving ? (actor.running ? Animation.Run : Animation.Walk) : Animation.Idle
-  const { frameTime } = ANIMATIONS[animation]
-
-  const facings = sprites.character.get(animation)
-  const cells = facings?.[facingIndex(actor.facingX, actor.facingY)]
-  // Frame count comes from the loaded art rather than the table, so a sheet that
-  // holds a different number than expected still plays instead of drawing nothing.
-  const person =
-    cells === undefined || cells.length === 0
-      ? undefined
-      : cells[Math.floor(scene.time / frameTime) % cells.length]
-
-  if (person !== undefined) {
-    const { sx, sy } = worldToScreen(actor.x, actor.y)
-
-    standing.push({
-      // Sorted by the tile the actor stands in, not their exact position, so they
-      // compare consistently against that tile's walls.
-      sort: depth(Math.floor(actor.x), Math.floor(actor.y)),
-      sprite: person,
-      // Anchored from the sprite's own size rather than a constant, because the
-      // placeholder and the real art are different dimensions and either may be in
-      // use if a sheet fails to load.
-      x: Math.round(ox + sx - person.width / 2),
-      y: Math.round(oy + sy - person.height + FOOT_INSET),
-      alpha: 1,
-    })
-  }
-
   // Lights are gathered while the scene is still in world space, then handed to
   // the lighting pass in screen coordinates.
   const lights: Light[] = []
 
   for (let y = bounds.minY; y <= bounds.maxY; y++) {
     for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const prop = grid.propAt(x, y)
-      const emitted = propLight(prop)
+      const emitted = propLight(grid.propAt(x, y))
       if (emitted === undefined) continue
 
       // Nothing is lit unless the player has paid for it. A device with no charge
@@ -324,22 +297,19 @@ export function renderScene(
       const charge = grid.chargeAt(x, y)
       if (charge <= 0) continue
 
-      const condition = grid.propVariantAt(x, y)
-
       // Damaged fittings stutter the entire time they burn, each on its own
       // rhythm so a street never blinks in unison. And every device gutters as its
       // charge runs out, which is the only warning that it is about to go.
       const dying = Math.min(1, charge / 12)
-      const stutter = condition === LampCondition.Damaged ? flicker(x * 7 + y * 13, scene.time) : 1
-
-      const strength = emitted.strength * stutter * dying
+      const stutter =
+        grid.propVariantAt(x, y) === LampCondition.Damaged ? flicker(x * 7 + y * 13, scene.time) : 1
 
       const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
       lights.push({
         x: ox + sx,
         y: oy + sy - emitted.height * TILE_Z,
         radius: emitted.radius * TILE_W * 0.5,
-        strength,
+        strength: emitted.strength * stutter * dying,
         colour: 'rgba(255, 190, 112, ALPHA)',
       })
     }
@@ -347,14 +317,15 @@ export function renderScene(
 
   if (scene.torch) {
     const { sx, sy } = worldToScreen(actor.x, actor.y)
-    // Point the cone the way the character faces, converted to screen space —
-    // the same projection the sprites use, so the beam and the body agree.
-    const screenDirX = actor.facingX - actor.facingY
-    const screenDirY = (actor.facingX + actor.facingY) / 2
 
     // The torch runs on the same gift as everything else, so it fades as that
     // does — the beam shortening is the warning, rather than a number falling.
     const torchStrength = 0.35 + Math.min(1, scene.power / 0.4) * 0.65
+
+    // Point the cone the way the character faces, converted to screen space —
+    // the same projection the sprites use, so the beam and the body agree.
+    const screenDirX = actor.facingX - actor.facingY
+    const screenDirY = (actor.facingX + actor.facingY) / 2
 
     lights.push({
       x: ox + sx,
@@ -376,6 +347,69 @@ export function renderScene(
       colour: 'rgba(198, 212, 244, ALPHA)',
     })
   }
+
+  /** Places one figure into the draw list, choosing its frame from what it is doing. */
+  const drawFigure = (
+    name: string,
+    x: number,
+    y: number,
+    facingX: number,
+    facingY: number,
+    moving: boolean,
+    running: boolean,
+    bobbing: boolean,
+  ): void => {
+    const animation = moving ? (running ? Animation.Run : Animation.Walk) : Animation.Idle
+    const { frameTime } = ANIMATIONS[animation]
+
+    const cells = sprites.characters.get(name)?.get(animation)?.[facingIndex(facingX, facingY)]
+    if (cells === undefined || cells.length === 0) return
+
+    // Frame count comes from the loaded art rather than the table, so a sheet
+    // holding a different number than expected still plays.
+    const sprite = cells[Math.floor(scene.time / frameTime) % cells.length]
+    if (sprite === undefined) return
+
+    const { sx, sy } = worldToScreen(x, y)
+    // A gentle bob while moving, for the player only — the White Eyes should not
+    // read as jaunty.
+    const bob = bobbing && moving ? Math.sin(scene.time * 11) * 1.6 : 0
+
+    standing.push({
+      // Sorted by the tile they stand in, not their exact position, so they
+      // compare consistently against that tile's walls.
+      sort: depth(Math.floor(x), Math.floor(y)),
+      sprite,
+      x: Math.round(ox + sx - sprite.width / 2),
+      y: Math.round(oy + sy - sprite.height + FOOT_INSET - bob),
+      alpha: 1,
+    })
+  }
+
+  for (const hunter of scene.hunters) {
+    // Always running when they move. They do not stroll.
+    drawFigure(
+      'white-eyes',
+      hunter.x,
+      hunter.y,
+      hunter.facingX,
+      hunter.facingY,
+      hunter.moving,
+      true,
+      false,
+    )
+  }
+
+  drawFigure(
+    'player',
+    actor.x,
+    actor.y,
+    actor.facingX,
+    actor.facingY,
+    actor.moving,
+    actor.running,
+    true,
+  )
 
   standing.sort((a, b) => a.sort - b.sort)
 
