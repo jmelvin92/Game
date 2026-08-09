@@ -331,6 +331,12 @@ export function placeBuilding(
       grid.set(tx, ty, archetype.floor)
       grid.setBuilding(tx, ty, id)
 
+      // Clear anything already standing on this tile's boundaries. A building
+      // stamped over ground that held a fence once kept a run of it inside —
+      // invisible from outside, and it cut the interior in two.
+      if (tx > x) grid.setWall(tx, ty, WallSide.West, Wall.None)
+      if (ty > y) grid.setWall(tx, ty, WallSide.North, Wall.None)
+
       // A hipped roof: every tile rises with its distance from the nearest eave,
       // until it reaches the ridge. Flat-topped buildings just cap the rise at
       // zero. Computing it here rather than in the renderer means the shape is

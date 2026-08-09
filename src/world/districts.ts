@@ -38,35 +38,3 @@ const DEFS: Readonly<Record<DistrictId, DistrictDef>> = {
 export function districtDef(id: DistrictId): DistrictDef {
   return DEFS[id]
 }
-
-/**
- * Which district a point falls in.
- *
- * Laid out deliberately rather than generated: commerce clusters where the roads
- * cross, industry sits out on one edge away from the housing, the rest is
- * residential, and everything north of the town is open country. That is roughly
- * how towns actually arrange themselves, and it means the map reads as a place
- * rather than a patchwork.
- *
- * @param townTop first row of the town; everything above it is countryside
- * @param townCentreX horizontal middle of the town
- * @param townCentreY vertical middle of the town, which is not the middle of the map
- */
-export function districtAt(
-  x: number,
-  y: number,
-  townWidth: number,
-  townTop: number,
-  townCentreX: number,
-  townCentreY: number,
-): DistrictId {
-  if (y < townTop) return District.Countryside
-
-  const fromCentre = Math.max(Math.abs(x - townCentreX), Math.abs(y - townCentreY))
-  if (fromCentre < townWidth * 0.18) return District.Commercial
-
-  // Industry occupies one corner, far from the middle and downwind of the housing.
-  if (x > townWidth * 0.62 && y > townCentreY + townWidth * 0.12) return District.Industrial
-
-  return District.Residential
-}

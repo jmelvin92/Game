@@ -240,9 +240,12 @@ GitHub is the backup, and every commit is a restore point.
 
 ## 7. Where the project stands
 
-**There is a walkable sandbox.** A generated town of enterable buildings in the southern half of
-the map, open countryside in the northern half, and a character who walks around it in eight
-directions, collides with walls and passes behind them correctly.
+**There is a walkable island.** Biome noise shapes an island of grassland, forest, desert and
+beach ringed by open sea; a city with districts (downtown towers, residential streets, a trailer
+park, industry), a smaller town, fenced farms along the road between them, and two airfields sit
+on it. Every building is enterable — a test flood-fills the world with the same rules movement
+uses and fails if a single interior tile is sealed. The character walks it in eight directions,
+collides with walls and water, and passes behind buildings correctly.
 
 | Phase | Delivers                                                          | Tag      | Status |
 | ----- | ----------------------------------------------------------------- | -------- | ------ |
