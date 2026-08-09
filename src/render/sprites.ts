@@ -376,9 +376,15 @@ function seededRandom(salt: number): () => number {
   }
 }
 
-function groundShadow(ctx: CanvasRenderingContext2D, radiusX: number, alpha: number): void {
+function groundShadow(
+  ctx: CanvasRenderingContext2D,
+  radiusX: number,
+  alpha: number,
+  // Wide furniture frames centre elsewhere than the shared prop frame does.
+  cx: number = PROP_ANCHOR.x,
+): void {
   ctx.beginPath()
-  ctx.ellipse(PROP_ANCHOR.x, PROP_ANCHOR.y, radiusX, radiusX * 0.42, 0, 0, Math.PI * 2)
+  ctx.ellipse(cx, PROP_ANCHOR.y, radiusX, radiusX * 0.42, 0, 0, Math.PI * 2)
   ctx.fillStyle = `rgba(0, 0, 0, ${String(alpha)})`
   ctx.fill()
 }
@@ -1029,6 +1035,283 @@ function drawWindsock(variant: number): HTMLCanvasElement {
   return element
 }
 
+/**
+ * Furniture.
+ *
+ * Every piece is stacked isometric boxes in muted paint, same as the car
+ * wrecks: at this scale silhouette is everything and detail is noise. Variant
+ * is facing — even variants run the long axis down-right on screen, odd ones
+ * down-left — so a bed can lie along whichever wall the plan puts it against.
+ *
+ * All of it shares one small box-drawing space rather than sixteen private
+ * geometries, which is what keeps sixteen painters from being sixteen bugs.
+ */
+interface BoxSpace {
+  readonly ctx: CanvasRenderingContext2D
+  readonly cx: number
+  readonly gy: number
+  /** Screen unit vectors: l runs the piece's long axis, w its width. */
+  readonly lx: number
+  readonly ly: number
+  readonly wx: number
+  readonly wy: number
+}
+
+function boxSpace(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  gy: number,
+  alongX: boolean,
+): BoxSpace {
+  return alongX
+    ? { ctx, cx, gy, lx: 1, ly: 0.5, wx: -1, wy: 0.5 }
+    : { ctx, cx, gy, lx: -1, ly: 0.5, wx: 1, wy: 0.5 }
+}
+
+function shadeOf(hex: string, f: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const c = (s: number): number => Math.round(((n >> s) & 0xff) * f)
+  return `rgb(${String(c(16))}, ${String(c(8))}, ${String(c(0))})`
+}
+
+/** One box in the space: extents in px along each axis, heights in px. */
+function isoBox(
+  s: BoxSpace,
+  l0: number,
+  l1: number,
+  w0: number,
+  w1: number,
+  h0: number,
+  h1: number,
+  paint: string,
+): void {
+  const { ctx } = s
+  const at = (l: number, w: number, h: number): [number, number] => [
+    s.cx + s.lx * l + s.wx * w,
+    s.gy - h + (s.ly * l + s.wy * w) * 0.9,
+  ]
+
+  const corners: readonly (readonly [number, number])[] = [
+    [l0, w0],
+    [l1, w0],
+    [l1, w1],
+    [l0, w1],
+  ]
+
+  ctx.fillStyle = paint
+  ctx.beginPath()
+  corners.forEach(([l, w], i) => {
+    const [px, py] = at(l, w, h1)
+    if (i === 0) ctx.moveTo(px, py)
+    else ctx.lineTo(px, py)
+  })
+  ctx.closePath()
+  ctx.fill()
+
+  for (const [[la, wa], [lb, wb], f] of [
+    [[l0, w1], [l1, w1], 0.62],
+    [[l1, w0], [l1, w1], 0.48],
+  ] as const) {
+    ctx.fillStyle = shadeOf(paint, f)
+    ctx.beginPath()
+    const [ax, ay] = at(la, wa, h1)
+    const [bx, by] = at(lb, wb, h1)
+    const [cxx, cy] = at(lb, wb, h0)
+    const [dx, dy] = at(la, wa, h0)
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(bx, by)
+    ctx.lineTo(cxx, cy)
+    ctx.lineTo(dx, dy)
+    ctx.closePath()
+    ctx.fill()
+  }
+}
+
+/** A furniture painter: wide pieces get a wider frame, anchored the same way. */
+function furniture(
+  wide: boolean,
+  paint: (s: BoxSpace, variant: number) => void,
+): (variant: number) => HTMLCanvasElement {
+  return (variant: number): HTMLCanvasElement => {
+    const w = wide ? 170 : PROP_W
+    const [element, ctx] = canvas(w, PROP_H)
+    const s = boxSpace(ctx, w / 2, PROP_H - 6, variant % 2 === 0)
+    groundShadow(ctx, wide ? 30 : 16, 0.26, w / 2)
+    paint(s, variant)
+    return element
+  }
+}
+
+const drawBed = furniture(true, (s) => {
+  isoBox(s, -44, 44, -16, 16, 2, 12, '#6b5a49')
+  // Mattress and blanket, then the pillow at the head end.
+  isoBox(s, -42, 42, -14, 14, 12, 17, '#b8b2a4')
+  isoBox(s, -42, 12, -14, 14, 12, 19, '#5f6b63')
+  isoBox(s, 24, 40, -12, 12, 17, 22, '#cfc9bb')
+  // Headboard, on the far end.
+  isoBox(s, 42, 46, -16, 16, 0, 30, '#5c4c3d')
+})
+
+const drawWardrobe = furniture(false, (s) => {
+  isoBox(s, -18, 18, -11, 11, 0, 46, '#6b5847')
+  // Door split and handles.
+  isoBox(s, -1, 1, -11.5, 11.5, 8, 44, '#4f4136')
+})
+
+const drawNightstand = furniture(false, (s) => {
+  isoBox(s, -10, 10, -9, 9, 0, 14, '#6b5847')
+  isoBox(s, -9, 9, -8, 8, 14, 16, '#7a6754')
+})
+
+const drawSofa = furniture(true, (s) => {
+  isoBox(s, -34, 34, -13, 13, 2, 12, '#5d6157')
+  // Back along the far side, arms at both ends.
+  isoBox(s, -34, 34, 6, 13, 12, 26, '#535749')
+  isoBox(s, -34, -26, -13, 13, 12, 20, '#535749')
+  isoBox(s, 26, 34, -13, 13, 12, 20, '#535749')
+  // Seat cushions.
+  isoBox(s, -25, 0, -12, 5, 12, 15, '#6a6e60')
+  isoBox(s, 1, 25, -12, 5, 12, 15, '#666a5c')
+})
+
+const drawCoffeeTable = furniture(false, (s) => {
+  isoBox(s, -16, -14, -9, -7, 0, 10, '#4f4136')
+  isoBox(s, 14, 16, -9, -7, 0, 10, '#4f4136')
+  isoBox(s, -16, -14, 7, 9, 0, 10, '#4f4136')
+  isoBox(s, 14, 16, 7, 9, 0, 10, '#4f4136')
+  isoBox(s, -18, 18, -10, 10, 10, 13, '#6b5847')
+})
+
+const drawTelevision = furniture(false, (s) => {
+  isoBox(s, -12, 12, -5, 5, 0, 8, '#3a3d42')
+  isoBox(s, -20, 20, -3, 3, 8, 32, '#23262b')
+  // The screen: a face of glass on the near side, off and faintly reflective.
+  isoBox(s, -18, 18, 3, 3.5, 10, 30, '#31363e')
+})
+
+const drawBookshelf = furniture(false, (s) => {
+  isoBox(s, -20, 20, -8, 8, 0, 42, '#5c4c3d')
+  // Shelves of books, as strips of muted spines.
+  for (const [h0, h1] of [
+    [4, 12],
+    [16, 24],
+    [28, 36],
+  ] as const) {
+    isoBox(s, -18, 18, -6, 6, h0, h1, '#4a3e32')
+    for (let i = 0; i < 6; i++) {
+      const l = -16 + i * 5.5
+      const paints = ['#71564a', '#5a6157', '#6a6355', '#57505e']
+      isoBox(s, l, l + 4, -5, 5, h0, h1 - 1, paints[i % paints.length] ?? '#5a5148')
+    }
+  }
+})
+
+const drawFloorLamp = furniture(false, (s) => {
+  const { ctx, cx, gy } = s
+  ctx.fillStyle = '#3b3e44'
+  ctx.beginPath()
+  ctx.ellipse(cx, gy - 1, 8, 4, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#4a4d53'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(cx, gy - 2)
+  ctx.lineTo(cx, gy - 58)
+  ctx.stroke()
+  // The shade: a truncated cone, paper-coloured — it will glow when fed.
+  ctx.fillStyle = '#a99e86'
+  ctx.beginPath()
+  ctx.moveTo(cx - 12, gy - 58)
+  ctx.lineTo(cx + 12, gy - 58)
+  ctx.lineTo(cx + 8, gy - 74)
+  ctx.lineTo(cx - 8, gy - 74)
+  ctx.closePath()
+  ctx.fill()
+})
+
+const drawFridge = furniture(false, (s) => {
+  isoBox(s, -13, 13, -11, 11, 0, 44, '#a8aaa6')
+  // Freezer seam and handle on the near face.
+  isoBox(s, -13, 13, 10.6, 11, 30, 31, '#7e807c')
+  isoBox(s, 8, 10, 10.8, 11.2, 33, 42, '#6f716d')
+})
+
+const drawStove = furniture(false, (s) => {
+  isoBox(s, -13, 13, -11, 11, 0, 24, '#9b9d99')
+  isoBox(s, -12, 12, -10, 10, 24, 26, '#3f4245')
+  // Burners.
+  const { ctx } = s
+  ctx.fillStyle = '#2a2c2f'
+  for (const [l, w] of [
+    [-7, -4],
+    [6, -4],
+    [-7, 5],
+    [6, 5],
+  ] as const) {
+    const px = s.cx + s.lx * l + s.wx * w
+    const py = s.gy - 26 + (s.ly * l + s.wy * w) * 0.9
+    ctx.beginPath()
+    ctx.ellipse(px, py, 5, 2.5, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+})
+
+const drawCounter = furniture(false, (s) => {
+  isoBox(s, -15, 15, -11, 11, 0, 22, '#6b5847')
+  isoBox(s, -16, 16, -12, 12, 22, 25, '#8d8579')
+})
+
+const drawSink = furniture(false, (s) => {
+  isoBox(s, -15, 15, -11, 11, 0, 22, '#6b5847')
+  isoBox(s, -16, 16, -12, 12, 22, 25, '#9a9c98')
+  const { ctx } = s
+  // The basin, sunk into the top, and a tap that will never run again.
+  ctx.fillStyle = '#5e605c'
+  ctx.beginPath()
+  ctx.ellipse(s.cx, s.gy - 25, 9, 4.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#7e807c'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(s.cx + s.wx * 8, s.gy - 25 + s.wy * 8 * 0.9)
+  ctx.lineTo(s.cx + s.wx * 8, s.gy - 34 + s.wy * 8 * 0.9)
+  ctx.lineTo(s.cx + s.wx * 4, s.gy - 33 + s.wy * 4 * 0.9)
+  ctx.stroke()
+})
+
+const drawToilet = furniture(false, (s) => {
+  // Tank against the far side, bowl in front.
+  isoBox(s, -6, 6, 5, 10, 0, 26, '#b6b8b4')
+  const { ctx } = s
+  ctx.fillStyle = '#c2c4c0'
+  ctx.beginPath()
+  ctx.ellipse(s.cx + s.wx * -2, s.gy - 12 + s.wy * -2 * 0.9, 9, 5.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#8f918d'
+  ctx.beginPath()
+  ctx.ellipse(s.cx + s.wx * -2, s.gy - 13 + s.wy * -2 * 0.9, 6, 3.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+})
+
+const drawBath = furniture(true, (s) => {
+  isoBox(s, -40, 40, -14, 14, 0, 14, '#b3b5b1')
+  // The hollow: darker floor inside the rim.
+  isoBox(s, -36, 36, -10, 10, 14, 14.5, '#878985')
+})
+
+const drawKitchenTable = furniture(false, (s) => {
+  isoBox(s, -16, -14, -10, -8, 0, 16, '#4f4136')
+  isoBox(s, 14, 16, -10, -8, 0, 16, '#4f4136')
+  isoBox(s, -16, -14, 8, 10, 0, 16, '#4f4136')
+  isoBox(s, 14, 16, 8, 10, 0, 16, '#4f4136')
+  isoBox(s, -18, 18, -12, 12, 16, 19, '#6b5847')
+})
+
+const drawChair = furniture(false, (s) => {
+  isoBox(s, -8, 8, -8, 8, 0, 11, '#5c4c3d')
+  isoBox(s, -8, 8, 6, 8, 11, 26, '#544639')
+})
+
 const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElement>> = {
   [Prop.None]: drawScrub,
   [Prop.DeadTree]: drawDeadTree,
@@ -1042,6 +1325,22 @@ const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElem
   [Prop.AirConditioner]: drawACUnit,
   [Prop.Boulder]: drawBoulder,
   [Prop.Windsock]: drawWindsock,
+  [Prop.Bed]: drawBed,
+  [Prop.Wardrobe]: drawWardrobe,
+  [Prop.Nightstand]: drawNightstand,
+  [Prop.Sofa]: drawSofa,
+  [Prop.CoffeeTable]: drawCoffeeTable,
+  [Prop.Television]: drawTelevision,
+  [Prop.Bookshelf]: drawBookshelf,
+  [Prop.FloorLamp]: drawFloorLamp,
+  [Prop.Fridge]: drawFridge,
+  [Prop.Stove]: drawStove,
+  [Prop.Counter]: drawCounter,
+  [Prop.Sink]: drawSink,
+  [Prop.Toilet]: drawToilet,
+  [Prop.Bath]: drawBath,
+  [Prop.KitchenTable]: drawKitchenTable,
+  [Prop.Chair]: drawChair,
 }
 
 const SKIN = '#d7a67c'

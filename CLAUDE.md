@@ -240,12 +240,15 @@ GitHub is the backup, and every commit is a restore point.
 
 ## 7. Where the project stands
 
-**There is a walkable island.** Biome noise shapes an island of grassland, forest, desert and
-beach ringed by open sea; a city with districts (downtown towers, residential streets, a trailer
-park, industry), a smaller town, fenced farms along the road between them, and two airfields sit
-on it. Every building is enterable — a test flood-fills the world with the same rules movement
-uses and fails if a single interior tile is sealed. The character walks it in eight directions,
-collides with walls and water, and passes behind buildings correctly.
+**There is a walkable island with one hand-built house on it.** Biome noise shapes an island of
+grassland, forest, desert and beach ringed by open sea; streets, farms' fields and two airfields'
+ground works survive — but **all generated buildings are removed by request**. One house exists,
+laid out by hand in `src/world/house.ts`: four rooms, windows, one front door, and full furnishing
+including devices the gift can wake (floor lamps, a television, a refrigerator). It is the
+standard the building generator will be rebuilt to meet, room by furnished room, before buildings
+return at scale. The player spawns on its front path. Furniture is props with facing in the
+variant slot — lamp _condition_ also lives in the variant slot, so lamp-specific rules (Broken
+refuses charge, Damaged flickers) are gated on the prop being a LampPost.
 
 | Phase | Delivers                                                          | Tag      | Status |
 | ----- | ----------------------------------------------------------------- | -------- | ------ |

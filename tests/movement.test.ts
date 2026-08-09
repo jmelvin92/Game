@@ -164,25 +164,24 @@ describe('sandbox', () => {
     expect(reachedInterior).toBe(interior)
   })
 
-  it('generates several buildings across more than one district', () => {
+  it('builds exactly the one house', () => {
+    // The world is deliberately down to a single hand-built building while the
+    // house is perfected; the generator returns once it is right.
     const grid = createSandbox()
 
     const ids = new Set<number>()
-    const roofs = new Set<number>()
-
+    let roofed = 0
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
         const id = grid.buildingAt(x, y)
         if (id === 0) continue
         ids.add(id)
-        roofs.add(grid.roofAt(x, y))
+        if (grid.roofAt(x, y) !== 0) roofed++
       }
     }
 
-    expect(ids.size).toBeGreaterThan(4)
-    // More than one roof style means archetypes from more than one district were
-    // used — the whole point of zoning.
-    expect(roofs.size).toBeGreaterThan(1)
+    expect([...ids]).toEqual([1])
+    expect(roofed).toBeGreaterThan(0)
   })
 
   it('produces the same town from the same seed', () => {

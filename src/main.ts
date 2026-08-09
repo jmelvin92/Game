@@ -30,7 +30,7 @@ import {
 import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
 import { drainCharges } from '@/world/grid'
 import { createSandbox, SANDBOX_SEED, SPAWN } from '@/world/sandbox'
-import { deviceDef, LampCondition, nearestDevice } from '@/world/props'
+import { deviceDef, LampCondition, nearestDevice, Prop } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 
 /**
@@ -335,7 +335,10 @@ window.addEventListener('keydown', (event) => {
     // Broken fittings will not hold a charge until repaired, which is daytime work
     // that does not exist yet. Refusing outright rather than silently doing nothing
     // is what will make that gap obvious when it starts to matter.
-    if (device.condition === LampCondition.Broken) return
+    // Condition is a lamp concept stored in the variant slot; furniture keeps
+    // its facing there. Without this gate a wardrobe facing 'west' would read
+    // as broken and refuse everything.
+    if (device.prop === Prop.LampPost && device.condition === LampCondition.Broken) return
 
     // Already running: topping up would let one device be kept alive indefinitely
     // for the price of a trickle, which is not what a charge is meant to be.

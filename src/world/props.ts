@@ -34,6 +34,27 @@ export const Prop = {
   Boulder: 10,
   /** Airfield windsock, hanging dead — there is weather but no wind yet. */
   Windsock: 11,
+
+  // Furniture. Variant is *facing* for these — 0 faces down-right on screen, 1
+  // down-left — not art variety and not condition. Some are devices: a floor
+  // lamp, a television and a refrigerator are things the gift can wake, which
+  // is the whole reason to furnish a house in this game.
+  Bed: 12,
+  Wardrobe: 13,
+  Nightstand: 14,
+  Sofa: 15,
+  CoffeeTable: 16,
+  Television: 17,
+  Bookshelf: 18,
+  FloorLamp: 19,
+  Fridge: 20,
+  Stove: 21,
+  Counter: 22,
+  Sink: 23,
+  Toilet: 24,
+  Bath: 25,
+  KitchenTable: 26,
+  Chair: 27,
 } as const
 
 export type PropId = (typeof Prop)[keyof typeof Prop]
@@ -73,6 +94,24 @@ const DEFS: Readonly<Record<PropId, PropDef>> = {
   [Prop.AirConditioner]: { name: 'air conditioner', solid: true, opaque: false, radius: 0.18 },
   [Prop.Boulder]: { name: 'boulder', solid: true, opaque: false, radius: 0.3 },
   [Prop.Windsock]: { name: 'windsock', solid: true, opaque: false, radius: 0.1 },
+  // Furniture blocks a generous circle — squeezing between a bed and its wall
+  // should not work — except the things you brush past: chairs and small tables.
+  [Prop.Bed]: { name: 'bed', solid: true, opaque: false, radius: 0.46 },
+  [Prop.Wardrobe]: { name: 'wardrobe', solid: true, opaque: false, radius: 0.4 },
+  [Prop.Nightstand]: { name: 'nightstand', solid: true, opaque: false, radius: 0.28 },
+  [Prop.Sofa]: { name: 'sofa', solid: true, opaque: false, radius: 0.44 },
+  [Prop.CoffeeTable]: { name: 'coffee table', solid: true, opaque: false, radius: 0.3 },
+  [Prop.Television]: { name: 'television', solid: true, opaque: false, radius: 0.3 },
+  [Prop.Bookshelf]: { name: 'bookshelf', solid: true, opaque: false, radius: 0.38 },
+  [Prop.FloorLamp]: { name: 'floor lamp', solid: true, opaque: false, radius: 0.14 },
+  [Prop.Fridge]: { name: 'refrigerator', solid: true, opaque: false, radius: 0.36 },
+  [Prop.Stove]: { name: 'stove', solid: true, opaque: false, radius: 0.36 },
+  [Prop.Counter]: { name: 'counter', solid: true, opaque: false, radius: 0.38 },
+  [Prop.Sink]: { name: 'sink', solid: true, opaque: false, radius: 0.34 },
+  [Prop.Toilet]: { name: 'toilet', solid: true, opaque: false, radius: 0.26 },
+  [Prop.Bath]: { name: 'bath', solid: true, opaque: false, radius: 0.44 },
+  [Prop.KitchenTable]: { name: 'kitchen table', solid: true, opaque: false, radius: 0.34 },
+  [Prop.Chair]: { name: 'chair', solid: false, opaque: false, radius: 0 },
 }
 
 /**
@@ -88,10 +127,24 @@ export interface PropLight {
   readonly strength: number
   /** Height above the ground in tiles, so the glow sits at the lamp not its foot. */
   readonly height: number
+  /** Light colour, as an rgba template with ALPHA where opacity goes. Absent
+      means the renderer's warm default — most electric light is warm. */
+  readonly colour?: string
 }
 
 const LIGHTS: Partial<Readonly<Record<PropId, PropLight>>> = {
   [Prop.LampPost]: { radius: 7.5, strength: 1, height: 1.6 },
+  [Prop.FloorLamp]: { radius: 4.2, strength: 0.85, height: 1.1 },
+  // A television lights a room the way nothing else does: cold, and enough.
+  [Prop.Television]: {
+    radius: 3.2,
+    strength: 0.6,
+    height: 0.6,
+    colour: 'rgba(168, 196, 255, ALPHA)',
+  },
+  // The fridge's glow is the little strip of its door seal — barely a light,
+  // but in a black kitchen barely is plenty.
+  [Prop.Fridge]: { radius: 1.6, strength: 0.35, height: 0.5, colour: 'rgba(210, 226, 255, ALPHA)' },
 }
 
 export function propLight(id: PropId): PropLight | undefined {
@@ -134,6 +187,12 @@ export interface DeviceDef {
 
 const DEVICES: Partial<Readonly<Record<PropId, DeviceDef>>> = {
   [Prop.LampPost]: { name: 'street lamp', cost: 0.16, duration: 150 },
+  // Domestic devices: cheaper than a street lamp, dimmer, more intimate. The
+  // fridge is the outlier — expensive and long-burning, because what it will
+  // eventually do is keep food, and food should cost something to keep.
+  [Prop.FloorLamp]: { name: 'floor lamp', cost: 0.08, duration: 240 },
+  [Prop.Television]: { name: 'television', cost: 0.1, duration: 180 },
+  [Prop.Fridge]: { name: 'refrigerator', cost: 0.22, duration: 600 },
 }
 
 export function deviceDef(id: PropId): DeviceDef | undefined {

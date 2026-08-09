@@ -143,7 +143,7 @@ describe('getting around', () => {
 })
 
 describe('the settlements', () => {
-  it('built a city worth the name', () => {
+  it('holds exactly one building: the house', () => {
     const ids = new Set<number>()
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
@@ -151,7 +151,7 @@ describe('the settlements', () => {
         if (b !== 0) ids.add(b)
       }
     }
-    expect(ids.size).toBeGreaterThan(120)
+    expect(ids.size).toBe(1)
   })
 
   it('lit some streets and left most dark', () => {

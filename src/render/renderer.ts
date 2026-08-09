@@ -9,7 +9,6 @@ import {
   ANIMATIONS,
   facingIndex,
   ROOF_STEP,
-  PROP_ANCHOR,
   WALL_H,
   WALL_W,
   wallSpriteKey,
@@ -307,7 +306,7 @@ export function renderScene(
           // Shear leans the sprite over; the vertical squash lays it on the ground.
           shade.transform(1, 0, sun.shadowX / 26, sun.shadowY / 26, 0, 0)
           shade.globalAlpha = 1
-          shade.drawImage(sprite, -PROP_ANCHOR.x, -PROP_ANCHOR.y)
+          shade.drawImage(sprite, -sprite.width / 2, -(sprite.height - 6))
           shade.restore()
         }
       }
@@ -404,8 +403,10 @@ export function renderScene(
       standing.push({
         sort: depth(x, y),
         sprite,
-        x: Math.round(ox + sx - PROP_ANCHOR.x),
-        y: Math.round(oy + sy - PROP_ANCHOR.y),
+        // Anchored from the sprite's own frame, not the shared constants —
+        // furniture ships wider frames than the flora does.
+        x: Math.round(ox + sx - sprite.width / 2),
+        y: Math.round(oy + sy - (sprite.height - 6)),
         alpha: 1,
       })
     }
@@ -463,8 +464,11 @@ export function renderScene(
       // rhythm so a street never blinks in unison. And every device gutters as its
       // charge runs out, which is the only warning that it is about to go.
       const dying = Math.min(1, charge / 12)
-      const stutter =
-        grid.propVariantAt(x, y) === LampCondition.Damaged ? flicker(x * 7 + y * 13, scene.time) : 1
+      // Condition lives in the variant for lamps alone; furniture keeps its
+      // facing there, and a bed should not stutter like a failing tube.
+      const damaged =
+        grid.propAt(x, y) === Prop.LampPost && grid.propVariantAt(x, y) === LampCondition.Damaged
+      const stutter = damaged ? flicker(x * 7 + y * 13, scene.time) : 1
 
       const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
       lights.push({
@@ -472,7 +476,7 @@ export function renderScene(
         y: oy + sy - emitted.height * TILE_Z,
         radius: emitted.radius * TILE_W * 0.5,
         strength: emitted.strength * stutter * dying,
-        colour: 'rgba(255, 190, 112, ALPHA)',
+        colour: emitted.colour ?? 'rgba(255, 190, 112, ALPHA)',
       })
     }
   }
