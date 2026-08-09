@@ -182,8 +182,13 @@ Phase 1 detail, for whoever picks this up next: 64×32 diamond tiles, transform
 the mouse pick a tile. Test the round-trip exhaustively before building anything on it; a subtle
 error there makes everything downstream look wrong for reasons that are very hard to trace.
 
-### Known gaps
+### Environment notes
 
-- **CI is not yet active.** The GitHub token lacks the `workflow` scope, so pushes containing
-  `.github/workflows/` are rejected. Joshua needs to run `gh auth refresh -s workflow`, after which
-  the CI workflow can be added. Until then the `pre-push` hook is the only gate.
+- **npm cache.** Several hundred files under `~/.npm/_cacache` are owned by `root`, left by a past
+  `sudo npm install`, and npm cannot overwrite them. `npm install` fails with `EEXIST`/`EACCES`
+  until that is fixed. Workaround: prefix commands with `npm_config_cache=/tmp/npm-cache-game`.
+  Permanent fix, which Joshua must run himself because it needs sudo:
+
+  ```sh
+  sudo chown -R "$(whoami)" ~/.npm
+  ```
