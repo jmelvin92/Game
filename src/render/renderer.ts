@@ -582,15 +582,86 @@ export function renderScene(
   return lights
 }
 
-/** Minimal on-screen readout. Replaced by a real HUD once there is something to report. */
-export function drawHud(
+/** What to call the part of the cycle we are in. */
+function phaseName(hour: number, darkness: number): string {
+  if (darkness <= 0.01) return 'day'
+  if (darkness >= 0.99) return 'night'
+  return hour > 12 ? 'dusk' : 'dawn'
+}
+
+/**
+ * The clock.
+ *
+ * Given a panel of its own rather than a place in the debug line, because it had a
+ * place in the debug line and it was no use there — twelve-point grey, third item
+ * along, indistinguishable from the tile coordinates beside it. A number nobody can
+ * find is not a readout.
+ *
+ * The darkness bar is here for the same reason the clock is: the light level is the
+ * thing being tuned, and reading it off the screen by eye is exactly what fails when
+ * the screen is nearly black.
+ */
+function drawClock(
   ctx: CanvasRenderingContext2D,
-  actor: Actor,
-  grid: Grid,
   clock: Clock,
-  torch: boolean,
-  zoom: number,
+  darkness: number,
+  width: number,
 ): void {
+  const panelW = 132
+  const panelH = 62
+  const x = width - panelW - 10
+  const y = 10
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
+  ctx.fillRect(x, y, panelW, panelH)
+
+  ctx.textBaseline = 'top'
+  ctx.font = '22px ui-monospace, SFMono-Regular, Menlo, monospace'
+  ctx.fillStyle = '#f2f4f7'
+  ctx.fillText(clock.label(), x + 12, y + 8)
+
+  // Phase and speed on one line, so the panel says what the number means.
+  const dayMinutes = clock.dayLength() / 60
+  const speed = Math.abs(dayMinutes - 20) < 0.01 ? '' : ` · ${dayMinutes.toFixed(1)}m`
+
+  ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, monospace'
+  ctx.fillStyle = clock.paused() ? '#ffd479' : '#9aa2ad'
+  ctx.fillText(
+    clock.paused() ? 'PAUSED' : `${phaseName(clock.hour(), darkness)}${speed}`,
+    x + 12,
+    y + 34,
+  )
+
+  // Darkness, drawn as a bar because the whole point is judging it at a glance.
+  const barX = x + 12
+  const barY = y + 50
+  const barW = panelW - 24
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.14)'
+  ctx.fillRect(barX, barY, barW, 4)
+  ctx.fillStyle = '#5f8dd6'
+  ctx.fillRect(barX, barY, barW * darkness, 4)
+}
+
+export interface HudOptions {
+  readonly actor: Actor
+  readonly grid: Grid
+  readonly clock: Clock
+  readonly torch: boolean
+  readonly zoom: number
+  readonly width: number
+  readonly darkness: number
+  /** 2 draws everything, 1 the clock alone. 0 means this is not called at all. */
+  readonly detail: number
+}
+
+/** Minimal on-screen readout. Replaced by a real HUD once there is something to report. */
+export function drawHud(ctx: CanvasRenderingContext2D, options: HudOptions): void {
+  const { actor, grid, clock, torch, zoom, width, darkness, detail } = options
+
+  drawClock(ctx, clock, darkness, width)
+  if (detail < 2) return
+
   const tileX = Math.floor(actor.x)
   const tileY = Math.floor(actor.y)
   const standingOn = grid.contains(tileX, tileY) ? tileDef(grid.at(tileX, tileY)).name : 'void'
@@ -598,22 +669,13 @@ export function drawHud(
   ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace'
   ctx.textBaseline = 'top'
 
-  // Time is only shown when it has been meddled with, so the readout stays quiet
-  // during normal play and obvious the moment it is not normal.
-  const dayMinutes = clock.dayLength() / 60
-  const speed = clock.paused()
-    ? '  ·  TIME PAUSED'
-    : Math.abs(dayMinutes - 20) < 0.01
-      ? ''
-      : `  ·  day ${dayMinutes < 1 ? `${String(Math.round(dayMinutes * 60))}s` : `${dayMinutes.toFixed(1)}m`}`
-
   const lines = [
-    'WASD walk · shift run · F torch · E power · wheel zoom · [ ] speed · , . hour · \\ pause',
-    `${clock.label()}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}${speed}`,
+    'WASD walk · shift run · F torch · E power · wheel zoom · [ ] speed · , . hour · \\ pause · H hide',
+    `${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}`,
   ]
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-  ctx.fillRect(10, 10, 470, 8 + lines.length * 16)
+  ctx.fillRect(10, 10, 500, 8 + lines.length * 16)
 
   ctx.fillStyle = '#d6d9de'
   lines.forEach((line, i) => {

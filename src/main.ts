@@ -123,6 +123,10 @@ window.addEventListener('keydown', (event) => {
   // right, and halving the day length to get there changes the thing being judged.
   if (event.code === 'Comma') clock.setHour(clock.hour() - 1)
   if (event.code === 'Period') clock.setHour(clock.hour() + 1)
+  // Everything, then the clock alone, then nothing. The last of those is not
+  // decoration: judging whether the world looks any good is impossible with a
+  // debug readout sitting on top of it.
+  if (event.code === 'KeyH') hudDetail = (hudDetail + 2) % 3
 
   if (event.code === 'Equal' || event.code === 'NumpadAdd') setZoom(zoom * 1.15)
   if (event.code === 'Minus' || event.code === 'NumpadSubtract') setZoom(zoom / 1.15)
@@ -382,6 +386,9 @@ const shadowBuffer = document.createElement('canvas')
 
 let elapsed = 0
 
+/** 2 shows the full readout, 1 the clock alone, 0 nothing. Cycled with H. */
+let hudDetail = 2
+
 startLoop(
   (step) => {
     elapsed += step
@@ -486,6 +493,17 @@ startLoop(
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
     renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed, hunters.noticedFor)
-    drawHud(ctx, actor, grid, clock, torchOn, zoom)
+    if (hudDetail > 0) {
+      drawHud(ctx, {
+        actor,
+        grid,
+        clock,
+        torch: torchOn,
+        zoom,
+        width: viewWidth,
+        darkness: darknessAt(clock.fraction),
+        detail: hudDetail,
+      })
+    }
   },
 )
