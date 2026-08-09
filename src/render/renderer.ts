@@ -1,3 +1,4 @@
+import type { Clock } from '@/core/time'
 import type { Actor } from '@/entity/actor'
 import type { Hunter } from '@/entity/hunters'
 import type { Sun } from '@/render/daylight'
@@ -526,7 +527,7 @@ export function drawHud(
   ctx: CanvasRenderingContext2D,
   actor: Actor,
   grid: Grid,
-  time: string,
+  clock: Clock,
   torch: boolean,
   zoom: number,
 ): void {
@@ -537,13 +538,22 @@ export function drawHud(
   ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, monospace'
   ctx.textBaseline = 'top'
 
+  // Time is only shown when it has been meddled with, so the readout stays quiet
+  // during normal play and obvious the moment it is not normal.
+  const dayMinutes = clock.dayLength() / 60
+  const speed = clock.paused()
+    ? '  ·  TIME PAUSED'
+    : Math.abs(dayMinutes - 20) < 0.01
+      ? ''
+      : `  ·  day ${dayMinutes < 1 ? `${String(Math.round(dayMinutes * 60))}s` : `${dayMinutes.toFixed(1)}m`}`
+
   const lines = [
-    'WASD to walk  ·  shift to run  ·  F torch  ·  wheel or +/- to zoom',
-    `${time}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}`,
+    'WASD walk · shift run · F torch · E power · wheel zoom · [ ] time · \\ pause',
+    `${clock.label()}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}${speed}`,
   ]
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-  ctx.fillRect(10, 10, 380, 8 + lines.length * 16)
+  ctx.fillRect(10, 10, 470, 8 + lines.length * 16)
 
   ctx.fillStyle = '#d6d9de'
   lines.forEach((line, i) => {

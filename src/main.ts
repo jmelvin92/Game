@@ -113,6 +113,12 @@ window.addEventListener(
 )
 
 window.addEventListener('keydown', (event) => {
+  // Time controls. Anything to do with light has to be judged while it changes,
+  // and a twenty-minute day is far too slow to tune dusk against.
+  if (event.code === 'BracketLeft') clock.setDayLength(clock.dayLength() * 2)
+  if (event.code === 'BracketRight') clock.setDayLength(clock.dayLength() / 2)
+  if (event.code === 'Backslash') clock.setPaused(!clock.paused())
+
   if (event.code === 'Equal' || event.code === 'NumpadAdd') setZoom(zoom * 1.15)
   if (event.code === 'Minus' || event.code === 'NumpadSubtract') setZoom(zoom / 1.15)
   if (event.code === 'Digit0') setZoom(1.6)
@@ -472,6 +478,6 @@ startLoop(
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
     renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed, hunters.noticedFor)
-    drawHud(ctx, actor, grid, clock.label(), torchOn, zoom)
+    drawHud(ctx, actor, grid, clock, torchOn, zoom)
   },
 )
