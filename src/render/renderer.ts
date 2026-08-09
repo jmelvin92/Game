@@ -4,14 +4,17 @@ import { depth, screenToWorld, TILE_H, TILE_W, TILE_Z, worldToScreen } from '@/r
 import {
   Animation,
   ANIMATIONS,
+  BUSH_ANCHOR,
   facingIndex,
   ROOF_STEP,
+  TREE_ANCHOR,
   WALL_H,
   WALL_W,
   wallSpriteKey,
   type Sprites,
 } from '@/render/sprites'
 import type { Grid } from '@/world/grid'
+import { Prop } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 import { Wall, WallSide } from '@/world/walls'
 
@@ -227,6 +230,33 @@ export function renderScene(
           })
         }
       }
+    }
+  }
+
+  // Vegetation, sorted in with the walls and the character so a tree can stand in
+  // front of or behind either.
+  for (let y = bounds.minY; y <= bounds.maxY; y++) {
+    for (let x = bounds.minX; x <= bounds.maxX; x++) {
+      const prop = grid.propAt(x, y)
+      if (prop === Prop.None) continue
+
+      const variant = grid.propVariantAt(x, y)
+      const isTree = prop === Prop.Tree
+      const sprite = isTree ? sprites.trees[variant] : sprites.bushes[variant]
+      if (sprite === undefined) continue
+
+      const anchor = isTree ? TREE_ANCHOR : BUSH_ANCHOR
+      // Anchored at the middle of the tile rather than its corner, so the trunk
+      // sits where the collision circle is.
+      const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
+
+      standing.push({
+        sort: depth(x, y),
+        sprite,
+        x: Math.round(ox + sx - anchor.x),
+        y: Math.round(oy + sy - anchor.y),
+        alpha: 1,
+      })
     }
   }
 

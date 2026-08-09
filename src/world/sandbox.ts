@@ -1,7 +1,8 @@
-import { createRng } from '@/core/rng'
+import { createRng, type Rng } from '@/core/rng'
 import { archetypesFor, placeBuilding } from '@/world/buildings'
 import { District, districtAt, districtDef, type DistrictId } from '@/world/districts'
 import { createGrid, type Grid } from '@/world/grid'
+import { Prop } from '@/world/props'
 import { Tile } from '@/world/tiles'
 
 /**
@@ -123,7 +124,80 @@ export function createSandbox(seed: number = SANDBOX_SEED): Grid {
     }
   }
 
+  scatterVegetation(grid, rng)
+
   return grid
+}
+
+/** Tree variants the renderer can draw; picked per tree so a wood is not one clone. */
+const TREE_VARIANTS = 5
+const BUSH_VARIANTS = 3
+
+/**
+ * Scatters trees and undergrowth over open ground.
+ *
+ * Clustered rather than evenly sprinkled. An even scatter reads as a texture — the
+ * eye picks up the regularity immediately — whereas vegetation actually grows in
+ * clumps with clearings between them. The clumping here is crude: a low-frequency
+ * value noise decides how wooded each area is, and the per-tile roll is weighted by
+ * it.
+ *
+ * Nothing is placed on roads, pavements or inside buildings, and a margin is left
+ * around the pavement so trees do not crowd the doors.
+ */
+function scatterVegetation(grid: Grid, rng: Rng): void {
+  // A coarse lattice of densities, smoothed between points, gives clumps far more
+  // cheaply than any real noise function and is plenty for deciding where woodland
+  // goes.
+  const cell = 12
+  const lattice: number[][] = []
+  for (let y = 0; y <= Math.ceil(grid.height / cell); y++) {
+    const row: number[] = []
+    for (let x = 0; x <= Math.ceil(grid.width / cell); x++) row.push(rng.next())
+    lattice.push(row)
+  }
+
+  const densityAt = (x: number, y: number): number => {
+    const gx = x / cell
+    const gy = y / cell
+    const x0 = Math.floor(gx)
+    const y0 = Math.floor(gy)
+    const fx = gx - x0
+    const fy = gy - y0
+
+    const at = (ax: number, ay: number): number => lattice[ay]?.[ax] ?? 0.5
+    const top = at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx
+    const bottom = at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx
+    return top * (1 - fy) + bottom * fy
+  }
+
+  for (let y = 0; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      if (grid.at(x, y) !== Tile.Grass) continue
+      if (grid.buildingAt(x, y) !== 0) continue
+
+      // Keep clear of anything paved, so trees do not block doorways or pavements.
+      let nearPaved = false
+      for (let dy = -1; dy <= 1 && !nearPaved; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const neighbour = grid.at(x + dx, y + dy)
+          if (neighbour !== Tile.Grass) {
+            nearPaved = true
+            break
+          }
+        }
+      }
+      if (nearPaved) continue
+
+      const density = densityAt(x, y)
+
+      if (rng.next() < density * 0.34) {
+        grid.setProp(x, y, Prop.Tree, rng.int(0, TREE_VARIANTS - 1))
+      } else if (rng.next() < density * 0.3) {
+        grid.setProp(x, y, Prop.Bush, rng.int(0, BUSH_VARIANTS - 1))
+      }
+    }
+  }
 }
 
 /** How many plots a block is divided into along each axis. */

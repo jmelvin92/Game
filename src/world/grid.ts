@@ -1,4 +1,5 @@
 import { Tile, type TileId } from '@/world/tiles'
+import { Prop, type PropId } from '@/world/props'
 import { Wall, type WallId, type WallSideId } from '@/world/walls'
 
 /**
@@ -49,6 +50,12 @@ export interface Grid {
   buildingAt(x: number, y: number): number
   setBuilding(x: number, y: number, id: number): void
 
+  /** What stands on this tile — a tree, a bush — or {@link Prop.None}. */
+  propAt(x: number, y: number): PropId
+  setProp(x: number, y: number, id: PropId, variant?: number): void
+  /** Which of the art's variants this prop uses, so a wood is not one tree cloned. */
+  propVariantAt(x: number, y: number): number
+
   /** The roof over this tile; 0 for open sky. */
   roofAt(x: number, y: number): number
   /** How far this part of the roof rises above the eaves, in steps. */
@@ -70,6 +77,8 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
   const buildings = new Uint16Array(area)
   const roofs = new Uint8Array(area)
   const roofHeights = new Uint8Array(area)
+  const props = new Uint8Array(area)
+  const propVariants = new Uint8Array(area)
 
   const contains = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < width && y < height
 
@@ -124,6 +133,22 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
     setBuilding(x: number, y: number, id: number): void {
       if (!contains(x, y)) return
       buildings[y * width + x] = id
+    },
+
+    propAt(x: number, y: number): PropId {
+      if (!contains(x, y)) return Prop.None
+      return (props[y * width + x] ?? Prop.None) as PropId
+    },
+
+    setProp(x: number, y: number, id: PropId, variant = 0): void {
+      if (!contains(x, y)) return
+      props[y * width + x] = id
+      propVariants[y * width + x] = variant
+    },
+
+    propVariantAt(x: number, y: number): number {
+      if (!contains(x, y)) return 0
+      return propVariants[y * width + x] ?? 0
     },
 
     roofAt(x: number, y: number): number {

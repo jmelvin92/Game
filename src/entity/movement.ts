@@ -1,6 +1,7 @@
 import type { Actor } from '@/entity/actor'
 import type { Grid } from '@/world/grid'
 import { isSolid } from '@/world/tiles'
+import { propDef } from '@/world/props'
 import { blocksMovement, WallSide } from '@/world/walls'
 
 /**
@@ -62,6 +63,16 @@ export function blocked(grid: Grid, x: number, y: number, radius: number): boole
       if (isSolid(grid.at(tx, ty))) {
         // Impassable ground still occupies the whole tile.
         if (x >= tx && x < tx + 1 && y >= ty && y < ty + 1) return true
+      }
+
+      // A solid prop blocks a circle at the middle of its tile — a trunk, not the
+      // whole square, so woodland stays walkable.
+      const prop = propDef(grid.propAt(tx, ty))
+      if (prop.solid) {
+        const dx = x - (tx + 0.5)
+        const dy = y - (ty + 0.5)
+        const reach = radius + prop.radius
+        if (dx * dx + dy * dy < reach * reach) return true
       }
 
       // West wall: the segment from (tx, ty) to (tx, ty + 1).

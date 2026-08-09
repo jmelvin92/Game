@@ -99,6 +99,9 @@ export interface Sprites {
   readonly walls: ReadonlyMap<string, HTMLCanvasElement>
   /** Roof tiles, indexed by roof style. */
   readonly roofs: readonly HTMLCanvasElement[]
+  /** Vegetation, indexed by variant. */
+  readonly trees: readonly HTMLCanvasElement[]
+  readonly bushes: readonly HTMLCanvasElement[]
   /** The character: animation → facing (see {@link facingIndex}) → frame. */
   readonly character: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
 }
@@ -335,6 +338,147 @@ function drawAsphalt(variant: number): HTMLCanvasElement {
   ctx.strokeStyle = 'rgba(20, 21, 25, 0.35)'
   ctx.lineWidth = 1
   ctx.stroke()
+
+  return element
+}
+
+/** How tall a tree sprite stands, and where its trunk meets the ground. */
+export const TREE_W = 116
+export const TREE_H = 168
+export const TREE_ANCHOR = { x: TREE_W / 2, y: TREE_H - 6 } as const
+
+export const BUSH_W = 78
+export const BUSH_H = 62
+export const BUSH_ANCHOR = { x: BUSH_W / 2, y: BUSH_H - 4 } as const
+
+/**
+ * A tree, drawn from overlapping blobs of foliage.
+ *
+ * Deliberately not a single silhouette: real canopies read as clumps catching the
+ * light separately, and a flat blob looks like a lollipop. Light is taken as coming
+ * from the upper left, matching the wall art, so the lit side is consistent with
+ * the buildings around it.
+ */
+function drawTree(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(TREE_W, TREE_H)
+
+  let seed = 0x2545f491 ^ Math.imul(variant + 1, 0x9e3779b9)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+
+  const cx = TREE_ANCHOR.x
+  const groundY = TREE_ANCHOR.y
+
+  // Contact shadow, or the tree appears to hover.
+  ctx.beginPath()
+  ctx.ellipse(cx, groundY, 26, 11, 0, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.30)'
+  ctx.fill()
+
+  // Trunk, tapering and leaning slightly so no two trees stand identically.
+  const lean = (random() - 0.5) * 10
+  ctx.beginPath()
+  ctx.moveTo(cx - 7, groundY)
+  ctx.lineTo(cx + 7, groundY)
+  ctx.lineTo(cx + 4 + lean, groundY - 62)
+  ctx.lineTo(cx - 4 + lean, groundY - 62)
+  ctx.closePath()
+  ctx.fillStyle = '#4a3a2b'
+  ctx.fill()
+  ctx.beginPath()
+  ctx.moveTo(cx + 1, groundY)
+  ctx.lineTo(cx + 7, groundY)
+  ctx.lineTo(cx + 4 + lean, groundY - 62)
+  ctx.lineTo(cx + 1 + lean, groundY - 62)
+  ctx.closePath()
+  ctx.fillStyle = '#3a2d21'
+  ctx.fill()
+
+  // Canopy: a handful of clumps around a centre above the trunk.
+  const canopyY = groundY - 96 + random() * 10
+  const spread = 30 + random() * 8
+
+  const clumps: { x: number; y: number; r: number }[] = []
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2 + random() * 0.7
+    const distance = spread * (0.35 + random() * 0.65)
+    clumps.push({
+      x: cx + lean + Math.cos(angle) * distance,
+      y: canopyY + Math.sin(angle) * distance * 0.62,
+      r: 21 + random() * 13,
+    })
+  }
+  clumps.push({ x: cx + lean, y: canopyY, r: 32 + random() * 6 })
+
+  const hue = 96 + Math.floor(random() * 26)
+  const dark = `hsl(${String(hue)}, 34%, 19%)`
+  const mid = `hsl(${String(hue)}, 32%, 27%)`
+  const light = `hsl(${String(hue - 6)}, 36%, 37%)`
+
+  for (const c of clumps) {
+    ctx.beginPath()
+    ctx.ellipse(c.x, c.y, c.r, c.r * 0.82, 0, 0, Math.PI * 2)
+    ctx.fillStyle = dark
+    ctx.fill()
+  }
+  for (const c of clumps) {
+    ctx.beginPath()
+    ctx.ellipse(c.x - 2, c.y - 3, c.r * 0.84, c.r * 0.68, 0, 0, Math.PI * 2)
+    ctx.fillStyle = mid
+    ctx.fill()
+  }
+  for (const c of clumps) {
+    ctx.beginPath()
+    ctx.ellipse(c.x - c.r * 0.28, c.y - c.r * 0.34, c.r * 0.44, c.r * 0.36, 0, 0, Math.PI * 2)
+    ctx.fillStyle = light
+    ctx.fill()
+  }
+
+  return element
+}
+
+/** A bush: the same idea, lower and without a trunk. */
+function drawBush(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(BUSH_W, BUSH_H)
+
+  let seed = 0x85ebca6b ^ Math.imul(variant + 1, 0x27d4eb2d)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+
+  const cx = BUSH_ANCHOR.x
+  const groundY = BUSH_ANCHOR.y
+
+  ctx.beginPath()
+  ctx.ellipse(cx, groundY, 20, 8, 0, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.26)'
+  ctx.fill()
+
+  const hue = 92 + Math.floor(random() * 30)
+  const clumps: { x: number; y: number; r: number }[] = []
+  for (let i = 0; i < 4; i++) {
+    clumps.push({
+      x: cx + (random() - 0.5) * 34,
+      y: groundY - 14 - random() * 12,
+      r: 14 + random() * 8,
+    })
+  }
+
+  for (const c of clumps) {
+    ctx.beginPath()
+    ctx.ellipse(c.x, c.y, c.r, c.r * 0.8, 0, 0, Math.PI * 2)
+    ctx.fillStyle = `hsl(${String(hue)}, 32%, 21%)`
+    ctx.fill()
+  }
+  for (const c of clumps) {
+    ctx.beginPath()
+    ctx.ellipse(c.x - c.r * 0.24, c.y - c.r * 0.3, c.r * 0.55, c.r * 0.44, 0, 0, Math.PI * 2)
+    ctx.fillStyle = `hsl(${String(hue - 5)}, 35%, 33%)`
+    ctx.fill()
+  }
 
   return element
 }
@@ -619,6 +763,8 @@ export function buildSprites(
   })
 
   const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))
+  const trees = [0, 1, 2, 3, 4].map(drawTree)
+  const bushes = [0, 1, 2].map(drawBush)
 
   // One set of frames per animation per facing. Placeholder art, generated to the
   // same shape real sprite sheets arrive in, so swapping them is a change of source
@@ -662,5 +808,5 @@ export function buildSprites(
     character.set(id, byFacing)
   }
 
-  return { ground, walls, roofs, character }
+  return { ground, walls, roofs, trees, bushes, character }
 }
