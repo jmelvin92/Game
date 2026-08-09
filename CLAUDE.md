@@ -16,21 +16,32 @@ line-of-sight, pathfinding, persistence — and an engine helps with none of the
 would cost is an editor-centric workflow of binary scene files, which suits neither an AI-written
 codebase nor a non-programmer reviewer.
 
-### What has NOT been decided
+### The direction so far
 
-**The game itself.** There is no theme, no setting, no genre commitment.
+**A modern city, seen isometrically, with a human character you control.** Joshua describes the
+feel as Project Zomboid blended with The Sims — Zomboid's city, scale and grounded texture, but
+without the commitment to survival horror that name implies.
 
-An early conversation used a Project Zomboid–style zombie survival game as a reference point for
-the _perspective and scale_. That reference is **not** the plan — the direction is explicitly open
-and probably isn't zombies.
+This is a **working direction, not a commitment.** Joshua's words: "it can change later." Treat it
+as enough to justify a road, a sidewalk and a person, and not as licence to invent what has not
+been discussed.
 
-So: **build only what is true of any isometric game.** Do not add tiles named "grass", items,
-enemies, health, crafting, or win conditions. Do not infer a direction from this file, from the
-git history, or from the reference above. If a task seems to require a design decision, stop and
-ask Joshua.
+### Still genuinely undecided
 
-The engine knows only what it structurally needs from a tile: _is it solid, is it opaque, how tall
-is it._ It never learns what a wall or a road is.
+The things that make it a _game_ rather than a walkable city: what the player is trying to do,
+what opposes them, whether there are enemies at all, whether there is combat, crafting, needs, a
+day cycle, or a win condition. **None of that has been agreed.** Do not add any of it, and do not
+infer it from the Project Zomboid reference — the early plan deliberately deferred every one of
+these until the engine could be walked around in.
+
+If a task seems to require one of those decisions, stop and ask.
+
+### The line to hold
+
+Content that exists is theme-flavoured (a road, a wall, a person) but the **engine underneath stays
+neutral**. `world/` knows only what it structurally needs from a tile — _is it solid, is it opaque,
+how tall is it_ — and never what a road or a building is. Appearance lives entirely in `render/`.
+Keeping that seam intact is what makes a change of direction cheap.
 
 ---
 
@@ -175,20 +186,33 @@ GitHub is the backup, and every commit is a restore point.
 
 ## 7. Where the project stands
 
-**Current phase: 0 — infrastructure.** No game code exists yet, by design.
+**There is a walkable sandbox.** A city crossroads with four enterable buildings, and a character
+who walks around it in eight directions, collides with walls and passes behind them correctly.
 
-| Phase | Delivers                                                        | Tag      | Status      |
-| ----- | --------------------------------------------------------------- | -------- | ----------- |
-| **0** | Repo, toolchain, hooks, CI, boundaries                          | `v0.1.0` | in progress |
-| **1** | Game loop, input, isometric maths, tile grid, camera            | `v0.2.0` | not started |
-| **2** | Entities, movement, collision, depth sorting, occlusion         | `v0.3.0` | not started |
-| **3** | Chunked world, pathfinding, versioned save/load                 | `v0.4.0` | not started |
-| —     | **Decide the game.** Engine is finished; direction gets chosen. |          |             |
+| Phase | Delivers                                                          | Tag      | Status |
+| ----- | ----------------------------------------------------------------- | -------- | ------ |
+| **0** | Repo, toolchain, hooks, CI, boundaries                            | `v0.1.0` | done   |
+| **1** | Loop, input, isometric maths, tiles, camera, character, collision | `v0.2.0` | done   |
+| **2** | Not yet planned — see below                                       |          |        |
 
-Phase 1 detail, for whoever picks this up next: 64×32 diamond tiles, transform
-`sx = (wx - wy) * 32`, `sy = (wx + wy) * 16 - wz * 32`. Implement the inverse too — it is what lets
-the mouse pick a tile. Test the round-trip exhaustively before building anything on it; a subtle
-error there makes everything downstream look wrong for reasons that are very hard to trace.
+Phases 2 and 3 originally read "entities, depth sorting, occlusion" and "chunked world,
+pathfinding, save/load". The first was folded into phase 1, because a camera panning over an empty
+grid is not something Joshua can react to and a character who walks is. The rest are **not
+scheduled**: chunking, pathfinding and persistence are all worth building, but which comes first
+depends on what the game turns out to be, and that is still open. Ask rather than assume.
+
+### Known limitations, honestly
+
+- **The world is a fixed 64×64 grid**, held entirely in memory. Fine for a sandbox, and the reason
+  chunking exists — but do not mistake it for a streaming world.
+- **Collision is circle-versus-tile**, resolved per axis with substepping so nothing tunnels at
+  speed. There is no entity-to-entity collision, because there is only one entity.
+- **Tiles have a `height` field and an `opaque` flag that nothing reads yet.** They are there
+  because they are properties of a tile rather than of a renderer; line-of-sight will use them.
+- **`window.game` exists in dev builds only**, holding the grid, actor, camera and input. Use it to
+  verify behaviour from the browser console. Note that Chrome throttles `requestAnimationFrame` in
+  a background tab, so a simulation driven from the console can appear frozen when the tab is not
+  foregrounded — that is the harness, not a bug in the loop.
 
 ### Environment notes
 

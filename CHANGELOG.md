@@ -11,6 +11,18 @@ For the reasoning behind any individual change, read the commit body — `git lo
 
 ## [Unreleased]
 
+### Added
+
+- An isometric renderer on 64×32 diamond tiles, with camera follow, viewport culling and
+  painter's-algorithm depth sorting, so the character passes correctly behind buildings.
+- A walkable sandbox: a city crossroads with sidewalks, grass and four enterable buildings, each
+  with a doorway. Hand-built rather than generated, so the renderer has a known-good reference.
+- A player character with eight-directional movement on WASD or the arrow keys, and collision that
+  slides along walls rather than snagging on them.
+- Sprites drawn procedurally in code — no image files and no asset pipeline.
+- A dev-only `window.game` handle for inspecting and driving the running game from the browser
+  console.
+
 ### Changed
 
 - The repository is now public. GitHub restricts branch protection to public repositories and paid
