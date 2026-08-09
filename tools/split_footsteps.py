@@ -36,6 +36,13 @@ MERGE_GAP = 0.16
 LEAD_IN = 0.02
 TAIL = 0.18
 
+# Most clips worth keeping per surface.
+#
+# Past about twenty, more variation is not audible — the ear stops noticing new
+# samples long before it stops noticing a repeat. What extra clips do cost is a
+# request each at startup, so a long recording is thinned rather than kept whole.
+MAX_CLIPS = 20
+
 
 def read_mono(path: Path) -> tuple[list[int], int]:
     """Reads any bit depth to a mono list of signed ints, plus the sample rate."""
@@ -144,6 +151,13 @@ def main(source: Path, surface: str) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for existing in OUT_DIR.glob(f'footstep-{surface}-*.wav'):
         existing.unlink()
+
+    # Thin evenly across the recording rather than taking the first N, so the
+    # selection spans whatever variety the performance had rather than its opening
+    # few paces.
+    if len(steps) > MAX_CLIPS:
+        stride = len(steps) / MAX_CLIPS
+        steps = [steps[int(i * stride)] for i in range(MAX_CLIPS)]
 
     written = 0
     for start, end in steps:
