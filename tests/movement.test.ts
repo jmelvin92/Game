@@ -95,7 +95,7 @@ describe('movement', () => {
     const actor = createActor(5.5, 7)
     // Nearly 7 tiles per step — far past anything a person would move, but exactly
     // the case that breaks collision that only tests its destination.
-    actor.speed = 400
+    actor.walkSpeed = 400
 
     for (let i = 0; i < 20; i++) {
       moveActor(actor, grid, 0, -1, STEP)
@@ -232,3 +232,39 @@ function floodFill(
 
   return seen
 }
+
+describe('running', () => {
+  it('covers more ground than walking over the same time', () => {
+    const grid = createGrid(40, 40, Tile.Grass)
+
+    const walker = createActor(20, 20)
+    const runner = createActor(20, 20)
+
+    for (let i = 0; i < 60; i++) {
+      moveActor(walker, grid, 1, 0, STEP, false)
+      moveActor(runner, grid, 1, 0, STEP, true)
+    }
+
+    expect(runner.x).toBeGreaterThan(walker.x)
+  })
+
+  it('only counts as running while actually moving', () => {
+    const grid = createGrid(12, 12, Tile.Grass)
+    grid.setWall(6, 5, WallSide.West, Wall.Solid)
+
+    const actor = createActor(5.5, 5.5)
+
+    // Held against a wall with the run key down: no ground covered, so no run
+    // animation should play.
+    for (let i = 0; i < 30; i++) {
+      moveActor(actor, grid, 1, 0, STEP, true)
+    }
+
+    expect(actor.running).toBe(false)
+
+    // And releasing the keys clears it too.
+    moveActor(actor, grid, 0, 0, STEP, true)
+    expect(actor.running).toBe(false)
+    expect(actor.moving).toBe(false)
+  })
+})

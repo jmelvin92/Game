@@ -93,16 +93,18 @@ export function moveActor(
   dirX: number,
   dirY: number,
   step: number,
+  running = false,
 ): void {
   if (dirX === 0 && dirY === 0) {
     actor.moving = false
+    actor.running = false
     return
   }
 
   actor.facingX = dirX
   actor.facingY = dirY
 
-  const distance = actor.speed * step
+  const distance = (running ? actor.runSpeed : actor.walkSpeed) * step
   const startX = actor.x
   const startY = actor.y
 
@@ -127,4 +129,6 @@ export function moveActor(
   }
 
   actor.moving = actor.x !== startX || actor.y !== startY
+  // Holding the run key while pressed against a wall should not play a run cycle.
+  actor.running = running && actor.moving
 }

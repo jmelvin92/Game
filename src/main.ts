@@ -117,7 +117,7 @@ startLoop(
     elapsed += step
 
     const direction = input.direction()
-    moveActor(actor, grid, direction.x, direction.y, step)
+    moveActor(actor, grid, direction.x, direction.y, step, input.running())
     followCamera(camera, actor.x, actor.y, step)
   },
   () => {

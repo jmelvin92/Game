@@ -2,6 +2,8 @@ import type { Actor } from '@/entity/actor'
 import { cameraOffset, type Camera } from '@/render/camera'
 import { depth, screenToWorld, TILE_H, TILE_W, TILE_Z, worldToScreen } from '@/render/iso'
 import {
+  Animation,
+  ANIMATIONS,
   facingIndex,
   PERSON_ANCHOR,
   WALL_H,
@@ -208,12 +210,19 @@ export function renderScene(
     }
   }
 
-  const person = sprites.person[facingIndex(actor.facingX, actor.facingY)]
+  // Which animation is playing follows from what the actor is doing, so the
+  // renderer never has to be told — one less thing to keep in step.
+  const animation = actor.moving ? (actor.running ? Animation.Run : Animation.Walk) : Animation.Idle
+  const { frames, frameTime } = ANIMATIONS[animation]
+
+  const facings = sprites.character.get(animation)
+  const person =
+    facings?.[facingIndex(actor.facingX, actor.facingY)]?.[
+      Math.floor(scene.time / frameTime) % frames
+    ]
+
   if (person !== undefined) {
     const { sx, sy } = worldToScreen(actor.x, actor.y)
-    // A gentle bob while walking. Cheap, and it does more for the sense of motion
-    // than a second set of sprites would.
-    const bob = actor.moving ? Math.sin(scene.time * 11) * 1.6 : 0
 
     standing.push({
       // Sorted by the tile the actor stands in, not their exact position, so they
@@ -221,7 +230,7 @@ export function renderScene(
       sort: depth(Math.floor(actor.x), Math.floor(actor.y)),
       sprite: person,
       x: Math.round(ox + sx - PERSON_ANCHOR.x),
-      y: Math.round(oy + sy - PERSON_ANCHOR.y - bob),
+      y: Math.round(oy + sy - PERSON_ANCHOR.y),
       alpha: 1,
     })
   }
@@ -246,7 +255,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, actor: Actor, grid: Grid)
   ctx.textBaseline = 'top'
 
   const lines = [
-    'WASD or arrow keys to walk',
+    'WASD or arrows to walk  ·  hold shift to run',
     `${String(tileX)}, ${String(tileY)}  ·  ${standingOn}`,
   ]
 

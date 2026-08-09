@@ -38,6 +38,35 @@ const PERSON_H = 56 * PERSON_SCALE
 /** Where the character's feet sit inside their sprite, so it can be anchored. */
 export const PERSON_ANCHOR = { x: PERSON_W / 2, y: 50 * PERSON_SCALE } as const
 
+/**
+ * Character animations.
+ *
+ * Frames run at a fixed rate per animation; the renderer picks one from elapsed
+ * time. Structured as animation → direction → frames because that is exactly how
+ * sprite sheets are laid out (a row per direction, a column per frame), so real art
+ * drops in without reshaping anything.
+ */
+export const Animation = {
+  Idle: 'idle',
+  Walk: 'walk',
+  Run: 'run',
+} as const
+
+export type AnimationId = (typeof Animation)[keyof typeof Animation]
+
+export interface AnimationDef {
+  readonly frames: number
+  /** Seconds per frame. */
+  readonly frameTime: number
+}
+
+export const ANIMATIONS: Readonly<Record<AnimationId, AnimationDef>> = {
+  [Animation.Idle]: { frames: 1, frameTime: 1 },
+  [Animation.Walk]: { frames: 6, frameTime: 0.12 },
+  // A run cycle turns over faster than a walk, which is most of what sells it.
+  [Animation.Run]: { frames: 6, frameTime: 0.08 },
+}
+
 export interface Sprites {
   /** Ground tiles, indexed by tile id. */
   readonly ground: ReadonlyMap<TileId, HTMLCanvasElement>
@@ -45,8 +74,8 @@ export interface Sprites {
   readonly walls: ReadonlyMap<string, HTMLCanvasElement>
   /** Roof tiles, indexed by roof style. */
   readonly roofs: readonly HTMLCanvasElement[]
-  /** The character, indexed by facing (see {@link facingIndex}). */
-  readonly person: readonly HTMLCanvasElement[]
+  /** The character: animation → facing (see {@link facingIndex}) → frame. */
+  readonly character: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
 }
 
 /** Key for {@link Sprites.walls}. */
@@ -220,7 +249,14 @@ const SHOES = '#23262c'
  * shifting the head slightly into the direction of travel and putting the hair on
  * whichever side is turned away, which reads clearly even at eight directions.
  */
-function drawPerson(screenDirX: number, screenDirY: number): HTMLCanvasElement {
+function drawPerson(
+  screenDirX: number,
+  screenDirY: number,
+  /** Position in the gait cycle, 0 to 1. */
+  phase: number,
+  /** How far the limbs swing. Running throws them further than walking. */
+  swing: number,
+): HTMLCanvasElement {
   const [element, ctx] = canvas(PERSON_W, PERSON_H)
 
   // Drawn once at the reference size and scaled by the transform, so the shapes
@@ -238,13 +274,22 @@ function drawPerson(screenDirX: number, screenDirY: number): HTMLCanvasElement {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.28)'
   ctx.fill()
 
-  // Legs and shoes.
+  // Legs swing in opposition through the cycle, and the whole body dips slightly
+  // at the point both feet are planted. Placeholder art, but the timing is what
+  // real sprites will have to match, so it is worth getting the shape of it right.
+  const cycle = Math.sin(phase * Math.PI * 2)
+  const legLead = cycle * swing
+  const bob = Math.abs(Math.cos(phase * Math.PI * 2)) * swing * 0.25
+
+  ctx.save()
+  ctx.translate(0, -bob)
+
   ctx.fillStyle = TROUSERS
-  ctx.fillRect(cx - 5.5, feet - 15, 5, 13)
-  ctx.fillRect(cx + 0.5, feet - 15, 5, 13)
+  ctx.fillRect(cx - 5.5 + legLead, feet - 15 + bob, 5, 13 - bob)
+  ctx.fillRect(cx + 0.5 - legLead, feet - 15 + bob, 5, 13 - bob)
   ctx.fillStyle = SHOES
-  ctx.fillRect(cx - 5.5, feet - 3, 5, 3)
-  ctx.fillRect(cx + 0.5, feet - 3, 5, 3)
+  ctx.fillRect(cx - 5.5 + legLead, feet - 3, 5, 3)
+  ctx.fillRect(cx + 0.5 - legLead, feet - 3, 5, 3)
 
   // Torso.
   const torsoTop = feet - 30
@@ -253,11 +298,12 @@ function drawPerson(screenDirX: number, screenDirY: number): HTMLCanvasElement {
   ctx.roundRect(cx - 8, torsoTop, 16, 17, 4)
   ctx.fill()
 
-  // Arms, tucked slightly behind the torso silhouette.
+  // Arms counter-swing against the legs, which is what stops a walk cycle reading
+  // as a shuffle.
   ctx.fillStyle = SHIRT_SHADE
   ctx.beginPath()
-  ctx.roundRect(cx - 10.5, torsoTop + 2, 4, 12, 2)
-  ctx.roundRect(cx + 6.5, torsoTop + 2, 4, 12, 2)
+  ctx.roundRect(cx - 10.5 - legLead * 0.6, torsoTop + 2, 4, 12, 2)
+  ctx.roundRect(cx + 6.5 + legLead * 0.6, torsoTop + 2, 4, 12, 2)
   ctx.fill()
 
   // Head, nudged toward the facing direction so a turn is visible even standing still.
@@ -285,6 +331,8 @@ function drawPerson(screenDirX: number, screenDirY: number): HTMLCanvasElement {
     ctx.fillRect(headX - 3.2 + screenDirX, headY - 0.5, 1.8, 2)
     ctx.fillRect(headX + 1.4 + screenDirX, headY - 0.5, 1.8, 2)
   }
+
+  ctx.restore()
 
   return element
 }
@@ -391,12 +439,36 @@ export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
 
   const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))
 
-  const person: HTMLCanvasElement[] = []
+  // One set of frames per animation per facing. Placeholder art, generated to the
+  // same shape real sprite sheets arrive in, so swapping them is a change of source
+  // rather than a change of structure.
+  const character = new Map<AnimationId, readonly (readonly HTMLCanvasElement[])[]>()
   const step = (Math.PI * 2) / FACINGS
-  for (let i = 0; i < FACINGS; i++) {
-    const angle = i * step
-    person.push(drawPerson(Math.cos(angle), Math.sin(angle)))
+
+  const swings: Readonly<Record<AnimationId, number>> = {
+    [Animation.Idle]: 0,
+    [Animation.Walk]: 2.4,
+    [Animation.Run]: 4.2,
   }
 
-  return { ground, walls, roofs, person }
+  for (const id of [Animation.Idle, Animation.Walk, Animation.Run] as const) {
+    const { frames } = ANIMATIONS[id]
+
+    const byFacing: HTMLCanvasElement[][] = []
+    for (let facing = 0; facing < FACINGS; facing++) {
+      const angle = facing * step
+      const dirX = Math.cos(angle)
+      const dirY = Math.sin(angle)
+
+      const cells: HTMLCanvasElement[] = []
+      for (let frame = 0; frame < frames; frame++) {
+        cells.push(drawPerson(dirX, dirY, frame / frames, swings[id]))
+      }
+      byFacing.push(cells)
+    }
+
+    character.set(id, byFacing)
+  }
+
+  return { ground, walls, roofs, character }
 }
