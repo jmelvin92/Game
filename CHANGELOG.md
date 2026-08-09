@@ -20,7 +20,7 @@ verifiably correct and mistakes are cheap to undo.
 
 - Git repository with `main` as the trunk, pushed to GitHub as a private repo.
 - `CLAUDE.md` — orientation for future sessions: architecture rules, where information lives, the
-  working agreement, and an explicit record of what has *not* been decided.
+  working agreement, and an explicit record of what has _not_ been decided.
 - TypeScript in full strict mode, including `noUncheckedIndexedAccess` and
   `exactOptionalPropertyTypes`.
 - Vite dev server and production build; Vitest for headless unit tests.

@@ -8,7 +8,7 @@ because it gets trusted.
 
 ## 1. What this is
 
-A **isometric game engine** in TypeScript, rendering to HTML canvas. No game engine (no Unity, no
+An **isometric game engine** in TypeScript, rendering to HTML canvas. No game engine (no Unity, no
 Godot), no rendering framework. Everything is hand-written and everything is plain text.
 
 That choice was deliberate: the hard parts of this genre are simulation — tile world, collision,
@@ -21,7 +21,7 @@ codebase nor a non-programmer reviewer.
 **The game itself.** There is no theme, no setting, no genre commitment.
 
 An early conversation used a Project Zomboid–style zombie survival game as a reference point for
-the *perspective and scale*. That reference is **not** the plan — the direction is explicitly open
+the _perspective and scale_. That reference is **not** the plan — the direction is explicitly open
 and probably isn't zombies.
 
 So: **build only what is true of any isometric game.** Do not add tiles named "grass", items,
@@ -29,8 +29,8 @@ enemies, health, crafting, or win conditions. Do not infer a direction from this
 git history, or from the reference above. If a task seems to require a design decision, stop and
 ask Joshua.
 
-The engine knows only what it structurally needs from a tile: *is it solid, is it opaque, how tall
-is it.* It never learns what a wall or a road is.
+The engine knows only what it structurally needs from a tile: _is it solid, is it opaque, how tall
+is it._ It never learns what a wall or a road is.
 
 ---
 
@@ -54,13 +54,13 @@ it. This shapes how to work:
 
 ## 3. Where to find information
 
-| Question | Where to look |
-| --- | --- |
-| What changed in each release? | `CHANGELOG.md` |
+| Question                      | Where to look                                          |
+| ----------------------------- | ------------------------------------------------------ |
+| What changed in each release? | `CHANGELOG.md`                                         |
 | **Why** does this line exist? | `git log` — commit bodies carry the reasoning (see §6) |
-| What did it look like before? | Tags: `git checkout v0.1.0`. Every phase is tagged. |
-| What are the rules here? | This file |
-| How do I run it? | §4 below, or `README.md` |
+| What did it look like before? | Tags: `git checkout v0.1.0`. Every phase is tagged.    |
+| What are the rules here?      | This file                                              |
+| How do I run it?              | §4 below, or `README.md`                               |
 
 There are deliberately **no** architecture decision records and **no** devlog. That was a
 considered choice: the reasoning lives in commit bodies instead. This only works if commit messages
@@ -169,13 +169,13 @@ GitHub is the backup, and every commit is a restore point.
 
 **Current phase: 0 — infrastructure.** No game code exists yet, by design.
 
-| Phase | Delivers | Tag | Status |
-| --- | --- | --- | --- |
-| **0** | Repo, toolchain, hooks, CI, boundaries | `v0.1.0` | in progress |
-| **1** | Game loop, input, isometric maths, tile grid, camera | `v0.2.0` | not started |
-| **2** | Entities, movement, collision, depth sorting, occlusion | `v0.3.0` | not started |
-| **3** | Chunked world, pathfinding, versioned save/load | `v0.4.0` | not started |
-| — | **Decide the game.** Engine is finished; direction gets chosen. | | |
+| Phase | Delivers                                                        | Tag      | Status      |
+| ----- | --------------------------------------------------------------- | -------- | ----------- |
+| **0** | Repo, toolchain, hooks, CI, boundaries                          | `v0.1.0` | in progress |
+| **1** | Game loop, input, isometric maths, tile grid, camera            | `v0.2.0` | not started |
+| **2** | Entities, movement, collision, depth sorting, occlusion         | `v0.3.0` | not started |
+| **3** | Chunked world, pathfinding, versioned save/load                 | `v0.4.0` | not started |
+| —     | **Decide the game.** Engine is finished; direction gets chosen. |          |             |
 
 Phase 1 detail, for whoever picks this up next: 64×32 diamond tiles, transform
 `sx = (wx - wy) * 32`, `sy = (wx + wy) * 16 - wz * 32`. Implement the inverse too — it is what lets
