@@ -5,8 +5,17 @@ import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
 import { drawHud, renderScene } from '@/render/renderer'
-import { buildSprites, WALL_H, WALL_W } from '@/render/sprites'
-import { loadTileSheets } from '@/render/textures'
+import {
+  Animation,
+  ANIMATIONS,
+  buildSprites,
+  CHARACTER_SCALE,
+  SHEET_ROWS,
+  WALL_H,
+  WALL_W,
+  type AnimationId,
+} from '@/render/sprites'
+import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
 import { createSandbox, SPAWN } from '@/world/sandbox'
 
 /**
@@ -101,7 +110,30 @@ const [groundSheets, wallSheets] = await Promise.all([
 
 const sheets = new Map([...groundSheets, ...wallSheets])
 
-const sprites = buildSprites(sheets)
+// Character art. If a sheet is missing the placeholder character is used instead,
+// so a failed load never leaves the player with nothing to control.
+const characterSheets = new Map<AnimationId, readonly (readonly HTMLCanvasElement[])[]>()
+
+await Promise.all(
+  (
+    [
+      [Animation.Idle, '/sprites/idle.png'],
+      [Animation.Walk, '/sprites/walk.png'],
+      [Animation.Run, '/sprites/run.png'],
+    ] as const
+  ).map(async ([id, url]) => {
+    try {
+      characterSheets.set(
+        id,
+        await loadSpriteGrid(url, ANIMATIONS[id].frames, SHEET_ROWS, CHARACTER_SCALE),
+      )
+    } catch {
+      // Left out of the map; buildSprites falls back for this animation.
+    }
+  }),
+)
+
+const sprites = buildSprites(sheets, characterSheets)
 
 if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser

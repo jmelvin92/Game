@@ -5,7 +5,6 @@ import {
   Animation,
   ANIMATIONS,
   facingIndex,
-  PERSON_ANCHOR,
   WALL_H,
   WALL_W,
   wallSpriteKey,
@@ -26,6 +25,9 @@ const BACKGROUND = '#1b1d21'
 
 /** Extra tiles drawn beyond the viewport edge, so tall sprites do not pop in. */
 const CULL_PADDING = 3
+
+/** Blank pixels below the character's feet in their sprite frame. */
+const FOOT_INSET = 0
 
 export interface Scene {
   readonly grid: Grid
@@ -229,8 +231,11 @@ export function renderScene(
       // compare consistently against that tile's walls.
       sort: depth(Math.floor(actor.x), Math.floor(actor.y)),
       sprite: person,
-      x: Math.round(ox + sx - PERSON_ANCHOR.x),
-      y: Math.round(oy + sy - PERSON_ANCHOR.y),
+      // Anchored from the sprite's own size rather than a constant, because the
+      // placeholder and the real art are different dimensions and either may be in
+      // use if a sheet fails to load.
+      x: Math.round(ox + sx - person.width / 2),
+      y: Math.round(oy + sy - person.height + FOOT_INSET),
       alpha: 1,
     })
   }

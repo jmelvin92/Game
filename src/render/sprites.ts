@@ -61,11 +61,36 @@ export interface AnimationDef {
 }
 
 export const ANIMATIONS: Readonly<Record<AnimationId, AnimationDef>> = {
-  [Animation.Idle]: { frames: 1, frameTime: 1 },
-  [Animation.Walk]: { frames: 6, frameTime: 0.12 },
+  // Frame counts are per sheet, and they differ: the supplied idle and walk sheets
+  // hold four frames per direction, the run sheet six. Detected from the art rather
+  // than assumed, because the three do not match.
+  [Animation.Idle]: { frames: 4, frameTime: 0.3 },
+  [Animation.Walk]: { frames: 4, frameTime: 0.14 },
   // A run cycle turns over faster than a walk, which is most of what sells it.
-  [Animation.Run]: { frames: 6, frameTime: 0.08 },
+  [Animation.Run]: { frames: 6, frameTime: 0.07 },
 }
+
+/** Directions per sheet row. Frames per row vary by animation — see ANIMATIONS. */
+export const SHEET_ROWS = 8
+
+/**
+ * Source frames are 196×146; the game wants a character about 110px tall so they
+ * read correctly against 128×64 tiles and a one-storey wall.
+ */
+export const CHARACTER_SCALE = 0.75
+
+/**
+ * Which sheet row holds each facing.
+ *
+ * {@link facingIndex} numbers directions from screen-east going clockwise, while
+ * the art runs north-first, also clockwise: N, NE, E, SE, S, SW, W, NW. This table
+ * is the whole of the difference, so re-ordering art later means editing one line
+ * rather than hunting through the renderer.
+ *
+ * Verified against the running game rather than read off the sheet — north looked
+ * right either way, and only the east/west pair gave the ordering away.
+ */
+export const SHEET_ROW_FOR_FACING: readonly number[] = [2, 3, 4, 5, 6, 7, 0, 1]
 
 export interface Sprites {
   /** Ground tiles, indexed by tile id. */
@@ -401,7 +426,10 @@ const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
  *   code-drawn placeholder, so a missing or failed texture degrades to something
  *   visible rather than a hole in the world.
  */
-export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
+export function buildSprites(
+  sheets: ReadonlyMap<string, TileSheet>,
+  characterSheets?: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>,
+): Sprites {
   const ground = new Map<TileId, HTMLCanvasElement>()
 
   for (const [id, palette] of GROUND_PALETTES) {
@@ -453,16 +481,24 @@ export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
 
   for (const id of [Animation.Idle, Animation.Walk, Animation.Run] as const) {
     const { frames } = ANIMATIONS[id]
+    const sheet = characterSheets?.get(id)
 
     const byFacing: HTMLCanvasElement[][] = []
     for (let facing = 0; facing < FACINGS; facing++) {
-      const angle = facing * step
-      const dirX = Math.cos(angle)
-      const dirY = Math.sin(angle)
+      // Real art is stored by sheet row, so the facing has to be translated first.
+      const row = sheet?.[SHEET_ROW_FOR_FACING[facing] ?? 0]
 
+      if (row !== undefined && row.length > 0) {
+        byFacing.push([...row])
+        continue
+      }
+
+      // No sheet: fall back to the drawn placeholder, so a missing or failed load
+      // leaves a visible character rather than nothing at all.
+      const angle = facing * step
       const cells: HTMLCanvasElement[] = []
       for (let frame = 0; frame < frames; frame++) {
-        cells.push(drawPerson(dirX, dirY, frame / frames, swings[id]))
+        cells.push(drawPerson(Math.cos(angle), Math.sin(angle), frame / frames, swings[id]))
       }
       byFacing.push(cells)
     }

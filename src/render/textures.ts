@@ -133,3 +133,60 @@ export async function loadTileSheets(
 
   return new Map(loaded)
 }
+
+/**
+ * Loads a character sheet laid out as a grid of directions and frames.
+ *
+ * Scaling happens here, once, rather than per draw: the source art is larger than
+ * the game needs, and rescaling every frame would cost more than it is worth for
+ * something that never changes.
+ *
+ * @param columns frames per direction
+ * @param rows directions
+ * @param scale applied to each frame after slicing
+ * @returns frames indexed by row, then column
+ */
+export async function loadSpriteGrid(
+  url: string,
+  columns: number,
+  rows: number,
+  scale = 1,
+): Promise<readonly (readonly HTMLCanvasElement[])[]> {
+  const image = await loadImage(url)
+
+  const frameWidth = Math.floor(image.width / columns)
+  const frameHeight = Math.floor(image.height / rows)
+  const outWidth = Math.round(frameWidth * scale)
+  const outHeight = Math.round(frameHeight * scale)
+
+  const grid: HTMLCanvasElement[][] = []
+
+  for (let row = 0; row < rows; row++) {
+    const frames: HTMLCanvasElement[] = []
+
+    for (let column = 0; column < columns; column++) {
+      const [frame, ctx] = createCanvas(outWidth, outHeight)
+
+      // Smoothing off: this is pixel art, and interpolating it turns crisp edges
+      // into mush at any scale that is not a whole number.
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(
+        image,
+        column * frameWidth,
+        row * frameHeight,
+        frameWidth,
+        frameHeight,
+        0,
+        0,
+        outWidth,
+        outHeight,
+      )
+
+      frames.push(frame)
+    }
+
+    grid.push(frames)
+  }
+
+  return grid
+}
