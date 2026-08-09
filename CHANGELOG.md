@@ -11,6 +11,16 @@ For the reasoning behind any individual change, read the commit body — `git lo
 
 ## [Unreleased]
 
+### Changed
+
+- **Walls moved from filling a tile to sitting on the boundary between two tiles.** This is what
+  makes buildings enterable: a doorway is a boundary with no wall on it and a window is one you can
+  see through but not walk through, neither of which a solid-tile wall can express. Collision became
+  circle-versus-segment as a result, so a doorway is a real gap that can be walked through at any
+  angle.
+- Ground and wall art now comes from the Screaming Brain Studios isometric packs (CC0, see
+  `ATTRIBUTION.md`) rather than being drawn in code. Tiles are 128×64, the size the art ships at.
+
 ### Added
 
 - An isometric renderer on 64×32 diamond tiles, with camera follow, viewport culling and

@@ -1,9 +1,17 @@
 import type { Actor } from '@/entity/actor'
 import { cameraOffset, type Camera } from '@/render/camera'
 import { depth, screenToWorld, TILE_H, TILE_W, worldToScreen } from '@/render/iso'
-import { facingIndex, PERSON_ANCHOR, type Sprites } from '@/render/sprites'
+import {
+  facingIndex,
+  PERSON_ANCHOR,
+  WALL_H,
+  WALL_W,
+  wallSpriteKey,
+  type Sprites,
+} from '@/render/sprites'
 import type { Grid } from '@/world/grid'
 import { tileDef } from '@/world/tiles'
+import { Wall, WallSide } from '@/world/walls'
 
 /**
  * Draws the world.
@@ -98,17 +106,30 @@ export function renderScene(
 
   for (let y = bounds.minY; y <= bounds.maxY; y++) {
     for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const id = grid.at(x, y)
-      const sprite = sprites.standing.get(id)
-      if (sprite === undefined) continue
-
       const { sx, sy } = worldToScreen(x, y)
-      standing.push({
-        sort: depth(x, y),
-        sprite,
-        x: Math.round(ox + sx - TILE_W / 2),
-        y: Math.round(oy + sy - (sprite.height - TILE_H)),
-      })
+
+      for (const side of [WallSide.West, WallSide.North] as const) {
+        const wall = grid.wallAt(x, y, side)
+        if (wall === Wall.None) continue
+
+        const sprite = sprites.walls.get(wallSpriteKey(wall, side))
+        if (sprite === undefined) continue
+
+        // A west wall runs down-left from the tile's top vertex, so it occupies the
+        // half-diamond to the left; a north wall runs down-right, occupying the
+        // half to the right. Both stand WALL_H tall from their lowest point.
+        const left = side === WallSide.West ? sx - WALL_W : sx
+
+        standing.push({
+          // Walls sit on a tile's far boundaries, so they draw fractionally before
+          // anything standing in that tile — that is what puts the character
+          // *inside* the room rather than in front of its back wall.
+          sort: depth(x, y) - 0.5,
+          sprite,
+          x: Math.round(ox + left),
+          y: Math.round(oy + sy - WALL_H + TILE_H / 2),
+        })
+      }
     }
   }
 
@@ -120,7 +141,9 @@ export function renderScene(
     const bob = actor.moving ? Math.sin(scene.time * 11) * 1.6 : 0
 
     standing.push({
-      sort: depth(actor.x, actor.y),
+      // Sorted by the tile the actor stands in, not their exact position, so they
+      // compare consistently against that tile's walls.
+      sort: depth(Math.floor(actor.x), Math.floor(actor.y)),
       sprite: person,
       x: Math.round(ox + sx - PERSON_ANCHOR.x),
       y: Math.round(oy + sy - PERSON_ANCHOR.y - bob),

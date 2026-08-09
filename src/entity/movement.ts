@@ -1,21 +1,78 @@
 import type { Actor } from '@/entity/actor'
 import type { Grid } from '@/world/grid'
 import { isSolid } from '@/world/tiles'
+import { blocksMovement, WallSide } from '@/world/walls'
 
 /**
- * Movement and collision against solid tiles.
+ * Movement and collision.
+ *
+ * Walls are boundaries between tiles rather than filled tiles, so collision is
+ * circle-versus-line-segment rather than a lookup. That is what lets a doorway be a
+ * genuine gap the actor walks through, at any angle, rather than a special case.
  */
 
-/** True if a circle of `radius` centred at (x, y) overlaps any solid tile. */
+/** How far outside a wall segment's ends its influence still reaches, in tiles.
+    Zero would let an actor clip the very corner where two walls meet. */
+const SEGMENT_EPSILON = 0
+
+function clamp(value: number, min: number, max: number): number {
+  return value < min ? min : value > max ? max : value
+}
+
+/** Squared distance from a point to an axis-aligned segment. */
+function distanceSquaredToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const closestX = clamp(px, Math.min(ax, bx) - SEGMENT_EPSILON, Math.max(ax, bx) + SEGMENT_EPSILON)
+  const closestY = clamp(py, Math.min(ay, by) - SEGMENT_EPSILON, Math.max(ay, by) + SEGMENT_EPSILON)
+
+  const dx = px - closestX
+  const dy = py - closestY
+
+  return dx * dx + dy * dy
+}
+
+/**
+ * True if a circle of `radius` centred at (x, y) overlaps a solid wall, impassable
+ * ground, or the edge of the map.
+ */
 export function blocked(grid: Grid, x: number, y: number, radius: number): boolean {
+  // The map edge is closed. Handled here rather than by ringing the border with
+  // walls, so the boundary cannot be walked through by editing the map.
+  if (x < radius || y < radius || x > grid.width - radius || y > grid.height - radius) {
+    return true
+  }
+
+  const radiusSquared = radius * radius
+
+  // A wall owned by tile (tx, ty) lies along that tile's own x or y line, so any
+  // wall able to touch the circle belongs to a tile in this range.
   const minX = Math.floor(x - radius)
-  const maxX = Math.floor(x + radius)
+  const maxX = Math.floor(x + radius) + 1
   const minY = Math.floor(y - radius)
-  const maxY = Math.floor(y + radius)
+  const maxY = Math.floor(y + radius) + 1
 
   for (let ty = minY; ty <= maxY; ty++) {
     for (let tx = minX; tx <= maxX; tx++) {
-      if (isSolid(grid.at(tx, ty))) return true
+      if (isSolid(grid.at(tx, ty))) {
+        // Impassable ground still occupies the whole tile.
+        if (x >= tx && x < tx + 1 && y >= ty && y < ty + 1) return true
+      }
+
+      // West wall: the segment from (tx, ty) to (tx, ty + 1).
+      if (blocksMovement(grid.wallAt(tx, ty, WallSide.West))) {
+        if (distanceSquaredToSegment(x, y, tx, ty, tx, ty + 1) < radiusSquared) return true
+      }
+
+      // North wall: the segment from (tx, ty) to (tx + 1, ty).
+      if (blocksMovement(grid.wallAt(tx, ty, WallSide.North))) {
+        if (distanceSquaredToSegment(x, y, tx, ty, tx + 1, ty) < radiusSquared) return true
+      }
     }
   }
 

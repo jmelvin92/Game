@@ -1,24 +1,30 @@
-import { TILE_H, TILE_W, TILE_Z } from '@/render/iso'
+import { TILE_H, TILE_W } from '@/render/iso'
 import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
+import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
 
 /**
- * Sprites drawn in code at startup.
+ * Assembles the sprites the renderer draws with.
  *
- * No image files and no asset pipeline: the art is source, so it diffs, reviews and
- * changes like anything else, and there is nothing binary in the repository. It is
- * placeholder quality by intent — good enough to read the world clearly and cheap to
- * throw away when real art arrives.
+ * Ground and wall art comes from loaded tile sheets (see `textures.ts`). The
+ * character, and a fallback for any tile whose texture is missing, are still drawn
+ * in code — so a failed or absent sheet degrades to something visible rather than a
+ * hole in the world.
  *
  * Everything here is appearance, which is why it lives in `render/` and not beside
- * the tile definitions in `world/`. The simulation knows a wall is solid; only this
- * file knows it is beige.
+ * the definitions in `world/`. The simulation knows a wall is solid; only this file
+ * knows it is brick.
  */
 
 /** Number of distinct facings a character is drawn in. */
 export const FACINGS = 8
 
-const WALL_SPRITE_H = TILE_H + TILE_Z
+/**
+ * A wall spans one edge of a tile diamond — half its width — and stands a tile
+ * tall above it. These match the dimensions the art ships at for 128×64 tiles.
+ */
+export const WALL_W = TILE_W / 2
+export const WALL_H = 96
 
 /**
  * The character is drawn against a 64-wide tile and scaled to whatever the tiles
@@ -35,10 +41,15 @@ export const PERSON_ANCHOR = { x: PERSON_W / 2, y: 50 * PERSON_SCALE } as const
 export interface Sprites {
   /** Ground tiles, indexed by tile id. */
   readonly ground: ReadonlyMap<TileId, HTMLCanvasElement>
-  /** Tiles that stand above the ground, indexed by tile id. */
-  readonly standing: ReadonlyMap<TileId, HTMLCanvasElement>
+  /** Wall segments, keyed by `${wallId}:${side}`. */
+  readonly walls: ReadonlyMap<string, HTMLCanvasElement>
   /** The character, indexed by facing (see {@link facingIndex}). */
   readonly person: readonly HTMLCanvasElement[]
+}
+
+/** Key for {@link Sprites.walls}. */
+export function wallSpriteKey(wall: WallId, side: WallSideId): string {
+  return `${String(wall)}:${String(side)}`
 }
 
 interface Palette {
@@ -112,41 +123,38 @@ function drawGroundTile(palette: Palette): HTMLCanvasElement {
   return element
 }
 
-function drawWall(): HTMLCanvasElement {
-  const [element, ctx] = canvas(TILE_W, WALL_SPRITE_H)
+/**
+ * Fallback wall, used only when a texture is missing.
+ *
+ * A wall face is a parallelogram: it follows the tile edge, which drops or rises by
+ * half a tile height across its width, and extends straight up from there.
+ */
+function drawEdgeWall(side: WallSideId, opening: boolean): HTMLCanvasElement {
+  const [element, ctx] = canvas(WALL_W, WALL_H)
 
-  const halfW = TILE_W / 2
-  const halfH = TILE_H / 2
-  const top = 0
-  const ground = TILE_Z
+  const rise = TILE_H / 2
+  // A west wall runs down-left across the screen; a north wall runs down-right.
+  const baseLeft = side === WallSide.West ? WALL_H : WALL_H - rise
+  const baseRight = side === WallSide.West ? WALL_H - rise : WALL_H
 
-  // Left face.
   ctx.beginPath()
-  ctx.moveTo(0, top + halfH)
-  ctx.lineTo(halfW, top + TILE_H)
-  ctx.lineTo(halfW, ground + TILE_H)
-  ctx.lineTo(0, ground + halfH)
+  ctx.moveTo(0, baseLeft)
+  ctx.lineTo(WALL_W, baseRight)
+  ctx.lineTo(WALL_W, baseRight - TILE_W / 2)
+  ctx.lineTo(0, baseLeft - TILE_W / 2)
   ctx.closePath()
-  ctx.fillStyle = WALL_LEFT
-  ctx.fill()
 
-  // Right face, lighter, as though lit from the right.
-  ctx.beginPath()
-  ctx.moveTo(halfW, top + TILE_H)
-  ctx.lineTo(TILE_W, top + halfH)
-  ctx.lineTo(TILE_W, ground + halfH)
-  ctx.lineTo(halfW, ground + TILE_H)
-  ctx.closePath()
-  ctx.fillStyle = WALL_RIGHT
+  ctx.fillStyle = side === WallSide.West ? WALL_LEFT : WALL_RIGHT
   ctx.fill()
-
-  // Top face last, so it covers where the two side faces meet.
-  diamondPath(ctx, top)
-  ctx.fillStyle = WALL_TOP
-  ctx.fill()
-  ctx.strokeStyle = WALL_LEFT
+  ctx.strokeStyle = WALL_TOP
   ctx.lineWidth = 1
   ctx.stroke()
+
+  if (opening) {
+    ctx.globalCompositeOperation = 'destination-out'
+    ctx.fillRect(WALL_W * 0.25, WALL_H * 0.35, WALL_W * 0.5, WALL_H * 0.25)
+    ctx.globalCompositeOperation = 'source-over'
+  }
 
   return element
 }
@@ -263,6 +271,26 @@ interface TextureRef {
   readonly index: number
 }
 
+/**
+ * Which material out of the twelve on each wall sheet the buildings use.
+ *
+ * Wall sheets are laid out in **pairs**: each material occupies two adjacent cells
+ * holding the same brick at opposite slopes — one rising left-to-right, one falling.
+ * A west wall runs down-left across the screen and needs the rising cell; a north
+ * wall runs down-right and needs the falling one.
+ *
+ * Using the same cell for both is what makes a building render as a detached
+ * staircase instead of continuous walls, so the pairing is not optional.
+ *
+ * The SE and SW sheets are *lighting* variants of the same geometry, not facings —
+ * each side uses whichever is lit correctly for the way it faces.
+ */
+const WALL_MATERIAL = 0
+
+function wallTextureIndex(side: WallSideId): number {
+  return WALL_MATERIAL * 2 + (side === WallSide.West ? 0 : 1)
+}
+
 const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
   [Tile.Grass, { sheet: 'grass', index: 0 }],
   // Nothing in the floor pack is true asphalt — it leans natural and fantasy — so
@@ -287,7 +315,23 @@ export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
     ground.set(id, textured ?? drawGroundTile(palette))
   }
 
-  const standing = new Map<TileId, HTMLCanvasElement>([[Tile.Wall, drawWall()]])
+  // Walls: one sprite per (kind, side). The art ships a separate render for each
+  // facing rather than a mirror, because the brick coursing and lighting differ.
+  const walls = new Map<string, HTMLCanvasElement>()
+
+  const wallSources: readonly (readonly [WallId, string])[] = [
+    [Wall.Solid, 'wall'],
+    [Wall.Window, 'wall-window'],
+  ]
+
+  for (const [id, prefix] of wallSources) {
+    for (const side of [WallSide.West, WallSide.North] as const) {
+      const sheetName = `${prefix}-${side === WallSide.West ? 'se' : 'sw'}`
+      const textured = sheets.get(sheetName)?.tiles[wallTextureIndex(side)]
+
+      walls.set(wallSpriteKey(id, side), textured ?? drawEdgeWall(side, id === Wall.Window))
+    }
+  }
 
   const person: HTMLCanvasElement[] = []
   const step = (Math.PI * 2) / FACINGS
@@ -296,5 +340,5 @@ export function buildSprites(sheets: ReadonlyMap<string, TileSheet>): Sprites {
     person.push(drawPerson(Math.cos(angle), Math.sin(angle)))
   }
 
-  return { ground, standing, person }
+  return { ground, walls, person }
 }

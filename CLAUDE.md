@@ -26,6 +26,18 @@ This is a **working direction, not a commitment.** Joshua's words: "it can chang
 as enough to justify a road, a sidewalk and a person, and not as licence to invent what has not
 been discussed.
 
+### Decided: every building is enterable
+
+**Interiors are core, not a later feature.** Joshua: "yes I will want all buildings enterable."
+
+This is the most constraining decision made so far, and it rules things out. It is why walls sit on
+tile **edges** rather than filling tiles — a solid-tile wall cannot have a doorway or a window, and
+a building made of them has no inside. It is also why several otherwise-excellent asset packs are
+unusable: packs that ship a house as a single sprite (Buggy Studio's modern city pack, most
+city-builder art) are for cities you move _through_, not _into_.
+
+Any future art or system has to answer: can you walk inside it?
+
 ### Still genuinely undecided
 
 The things that make it a _game_ rather than a walkable city: what the player is trying to do,

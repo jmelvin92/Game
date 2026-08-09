@@ -5,7 +5,7 @@ import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
 import { drawHud, renderScene } from '@/render/renderer'
-import { buildSprites } from '@/render/sprites'
+import { buildSprites, WALL_H, WALL_W } from '@/render/sprites'
 import { loadTileSheets } from '@/render/textures'
 import { createSandbox, SPAWN } from '@/world/sandbox'
 
@@ -63,19 +63,35 @@ const input = createInput()
 
 // Textures must be decoded and keyed before the first frame, so the world never
 // flashes untextured. Sheets load concurrently; this is a few hundred milliseconds.
-const sheets = await loadTileSheets(
-  {
-    grass: '/tiles/grass.png',
-    rocky: '/tiles/rocky.png',
-    stones: '/tiles/stones.png',
-    dry: '/tiles/dry.png',
-    stone: '/tiles/stone.png',
-    tile: '/tiles/tile.png',
-    wood: '/tiles/wood.png',
-  },
-  TILE_W,
-  TILE_H,
-)
+const [groundSheets, wallSheets] = await Promise.all([
+  loadTileSheets(
+    {
+      grass: '/tiles/grass.png',
+      rocky: '/tiles/rocky.png',
+      stones: '/tiles/stones.png',
+      dry: '/tiles/dry.png',
+      stone: '/tiles/stone.png',
+      tile: '/tiles/tile.png',
+      wood: '/tiles/wood.png',
+    },
+    TILE_W,
+    TILE_H,
+  ),
+  // Wall segments span half a tile and stand a tile tall, so they slice on a
+  // different grid to the ground.
+  loadTileSheets(
+    {
+      'wall-se': '/tiles/wall-se.png',
+      'wall-sw': '/tiles/wall-sw.png',
+      'wall-window-se': '/tiles/wall-window-se.png',
+      'wall-window-sw': '/tiles/wall-window-sw.png',
+    },
+    WALL_W,
+    WALL_H,
+  ),
+])
+
+const sheets = new Map([...groundSheets, ...wallSheets])
 
 const sprites = buildSprites(sheets)
 
