@@ -10,15 +10,10 @@
  * a canvas the renderer reuses, keeps it off the hot path entirely.
  */
 
-/** Sheets use pure magenta as the transparency key. */
-const KEY_R = 255
-const KEY_G = 0
-const KEY_B = 255
-
 /**
- * How far a pixel may stray from pure magenta and still count as background.
- * The renders have hard edges, but JPEG-era tooling and scaling can leave a thin
- * fringe; a small tolerance removes it without eating the pinks inside a texture.
+ * How far a pixel may stray from the detected background and still be keyed out.
+ * The renders have hard edges, but scaling and lossy re-encoding leave a thin
+ * fringe; a small tolerance removes it without eating colours inside a texture.
  */
 const KEY_TOLERANCE = 40
 
@@ -56,8 +51,58 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   })
 }
 
-/** Replaces the magenta key colour with transparency, in place. */
+/**
+ * Finds the colour a sheet uses for empty space.
+ *
+ * Different packs pick different keys — the wall and floor art uses magenta, the
+ * town facades use teal — and hard-coding one silently leaves the other's
+ * background painted into the game. Sampling the border finds it either way,
+ * since whatever colour surrounds the art is by definition the background.
+ */
+function detectKeyColour(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): readonly [number, number, number] | undefined {
+  const counts = new Map<string, number>()
+  const step = Math.max(1, Math.floor(Math.min(width, height) / 64))
+
+  const sample = (x: number, y: number): void => {
+    const [r, g, b, a] = ctx.getImageData(x, y, 1, 1).data
+    if (a === undefined || a < 250) return
+    const key = `${String(r)},${String(g)},${String(b)}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+
+  for (let x = 0; x < width; x += step) {
+    sample(x, 0)
+    sample(x, height - 1)
+  }
+  for (let y = 0; y < height; y += step) {
+    sample(0, y)
+    sample(width - 1, y)
+  }
+
+  let best: string | undefined
+  let bestCount = 0
+  for (const [colour, count] of counts) {
+    if (count > bestCount) {
+      best = colour
+      bestCount = count
+    }
+  }
+
+  if (best === undefined) return undefined
+  const [r, g, b] = best.split(',').map(Number)
+  return r === undefined || g === undefined || b === undefined ? undefined : [r, g, b]
+}
+
+/** Replaces the sheet's background colour with transparency, in place. */
 function keyOutBackground(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const key = detectKeyColour(ctx, width, height)
+  if (key === undefined) return
+
+  const [keyR, keyG, keyB] = key
   const image = ctx.getImageData(0, 0, width, height)
   const { data } = image
 
@@ -67,9 +112,9 @@ function keyOutBackground(ctx: CanvasRenderingContext2D, width: number, height: 
     const b = data[i + 2] ?? 0
 
     if (
-      Math.abs(r - KEY_R) <= KEY_TOLERANCE &&
-      Math.abs(g - KEY_G) <= KEY_TOLERANCE &&
-      Math.abs(b - KEY_B) <= KEY_TOLERANCE
+      Math.abs(r - keyR) <= KEY_TOLERANCE &&
+      Math.abs(g - keyG) <= KEY_TOLERANCE &&
+      Math.abs(b - keyB) <= KEY_TOLERANCE
     ) {
       data[i + 3] = 0
     }

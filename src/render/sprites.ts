@@ -230,29 +230,58 @@ function drawEdgeWall(side: WallSideId, opening: boolean): HTMLCanvasElement {
   return element
 }
 
+/** Vertical pixels each step of roof rise adds. */
+export const ROOF_STEP = 12
+
 /**
- * A roof tile: one flat diamond sitting a storey above the ground.
+ * A roof tile: a diamond with a skirt hanging below it.
  *
- * Drawn in code rather than textured, because a roof only needs to read as a solid
- * mass of the right colour from above — and doing it this way makes each archetype's
- * roof a one-line change while the shape of the town is still being worked out.
+ * Roofs are hipped, so neighbouring tiles sit at different heights. Drawing bare
+ * diamonds would leave the ground showing through the steps between them; the
+ * skirt fills that gap, and since adjacent tiles never differ by more than one
+ * step, a skirt one step deep is always enough.
+ *
+ * The result reads as a tiled roof with courses rather than a smooth slope, which
+ * suits the rest of the art better than a perfectly even surface would.
  */
 function drawRoof(colour: string): HTMLCanvasElement {
-  const [element, ctx] = canvas(TILE_W, TILE_H)
+  const [element, ctx] = canvas(TILE_W, TILE_H + ROOF_STEP)
+
+  const halfW = TILE_W / 2
+  const halfH = TILE_H / 2
+
+  // Skirt: the two faces below the diamond's lower edges.
+  ctx.beginPath()
+  ctx.moveTo(0, halfH)
+  ctx.lineTo(halfW, TILE_H)
+  ctx.lineTo(TILE_W, halfH)
+  ctx.lineTo(TILE_W, halfH + ROOF_STEP)
+  ctx.lineTo(halfW, TILE_H + ROOF_STEP)
+  ctx.lineTo(0, halfH + ROOF_STEP)
+  ctx.closePath()
+  ctx.fillStyle = shade(colour, -0.32)
+  ctx.fill()
 
   diamondPath(ctx, 0)
-
   ctx.fillStyle = colour
   ctx.fill()
 
-  // A very faint seam. Enough that a large roof reads as a surface with panels
-  // rather than a flat shape cut out of the world, but not so much that the tile
-  // grid becomes the thing you notice.
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)'
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)'
   ctx.lineWidth = 1
   ctx.stroke()
 
   return element
+}
+
+/** Shifts a hex colour toward white (positive amount) or black (negative). */
+function shade(hex: string, amount: number): string {
+  const value = Number.parseInt(hex.slice(1), 16)
+  const channel = (shift: number): number => {
+    const base = (value >> shift) & 0xff
+    const target = amount > 0 ? 255 : 0
+    return Math.round(base + (target - base) * Math.abs(amount))
+  }
+  return `rgb(${String(channel(16))}, ${String(channel(8))}, ${String(channel(0))})`
 }
 
 const SKIN = '#d7a67c'
@@ -394,17 +423,13 @@ interface TextureRef {
  * A west wall runs down-left across the screen and needs the rising cell; a north
  * wall runs down-right and needs the falling one.
  *
- * Using the same cell for both is what makes a building render as a detached
- * staircase instead of continuous walls, so the pairing is not optional.
+ * Which of the two a given side needs is decided by {@link slopesLikeWestWall},
+ * reading the art rather than trusting an order that differs between packs.
  *
  * The SE and SW sheets are *lighting* variants of the same geometry, not facings —
  * each side uses whichever is lit correctly for the way it faces.
  */
 const WALL_MATERIAL = 0
-
-function wallTextureIndex(side: WallSideId): number {
-  return WALL_MATERIAL * 2 + (side === WallSide.West ? 0 : 1)
-}
 
 const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
   [Tile.Grass, { sheet: 'grass', index: 0 }],
@@ -422,6 +447,35 @@ const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
  *   code-drawn placeholder, so a missing or failed texture degrades to something
  *   visible rather than a hole in the world.
  */
+
+/**
+ * Which way a wall tile slopes, read off the art itself.
+ *
+ * A west wall runs down-left across the screen, so its highest point is on the
+ * right; a north wall runs down-right and is highest on the left. Comparing the
+ * topmost opaque pixel at each edge tells them apart.
+ *
+ * Detected rather than assumed because the convention differs between packs, and
+ * getting it wrong renders a building as a detached staircase — a failure that
+ * looks like broken art rather than a wrong index, and has now cost two debugging
+ * sessions.
+ */
+function slopesLikeWestWall(tile: HTMLCanvasElement): boolean {
+  const ctx = tile.getContext('2d', { willReadFrequently: true })
+  if (ctx === null) return true
+
+  const topOpaque = (x: number): number => {
+    const column = ctx.getImageData(x, 0, 1, tile.height).data
+    for (let y = 0; y < tile.height; y++) {
+      if ((column[y * 4 + 3] ?? 0) > 24) return y
+    }
+    return tile.height
+  }
+
+  const inset = Math.max(1, Math.floor(tile.width * 0.15))
+  return topOpaque(tile.width - 1 - inset) < topOpaque(inset)
+}
+
 export function buildSprites(
   sheets: ReadonlyMap<string, TileSheet>,
   characterSheets?: ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>,
@@ -439,25 +493,62 @@ export function buildSprites(
   // for each facing rather than a mirror, because the coursing and lighting differ.
   const walls = new Map<string, HTMLCanvasElement>()
 
-  const materials = ['brick', 'stone', 'wood'] as const
   const kinds: readonly (readonly [WallId, string])[] = [
     [Wall.Solid, ''],
     [Wall.Window, '-window'],
   ]
 
-  materials.forEach((material, style) => {
-    for (const [id, suffix] of kinds) {
-      for (const side of [WallSide.West, WallSide.North] as const) {
-        const facing = side === WallSide.West ? 'se' : 'sw'
-        const textured = sheets.get(`wall-${material}${suffix}-${facing}`)?.tiles[
-          wallTextureIndex(side)
-        ]
+  // Where each wall style's art comes from. The first three are the plain wall
+  // pack; the rest are building facades from the town pack — multi-storey fronts
+  // with windows and shop frontage, which is what stops every building reading as
+  // the same brick box.
+  //
+  // Facade sheets are one image rather than a pair, and like the wall pack they
+  // store slopes in adjacent columns, so a style picks a *pair* and the side
+  // chooses within it.
+  const WALL_STYLE_SOURCES: readonly { sheet: string; pair: number; paired: boolean }[] = [
+    { sheet: 'wall-brick', pair: 0, paired: true },
+    { sheet: 'wall-stone', pair: 0, paired: true },
+    { sheet: 'wall-wood', pair: 0, paired: true },
+    { sheet: 'facade-1', pair: 0, paired: false },
+    { sheet: 'facade-1', pair: 1, paired: false },
+    { sheet: 'facade-1', pair: 3, paired: false },
+    { sheet: 'facade-2', pair: 0, paired: false },
+    { sheet: 'facade-2', pair: 2, paired: false },
+    { sheet: 'facade-3', pair: 1, paired: false },
+  ]
 
-        walls.set(
-          wallSpriteKey(id, side, style),
-          textured ?? drawEdgeWall(side, id === Wall.Window),
-        )
+  WALL_STYLE_SOURCES.forEach((source, style) => {
+    for (const [id, suffix] of kinds) {
+      // Take the pair of tiles holding this material's two slopes, then let the
+      // art decide which is which rather than assuming an order.
+      const candidates = [WallSide.West, WallSide.North].map((side) => {
+        const sheetName = source.paired
+          ? `${source.sheet}${suffix}-${side === WallSide.West ? 'se' : 'sw'}`
+          : source.sheet
+        const index = source.paired
+          ? WALL_MATERIAL * 2 + (side === WallSide.West ? 0 : 1)
+          : source.pair * 2 + (side === WallSide.West ? 0 : 1)
+        return sheets.get(sheetName)?.tiles[index]
+      })
+
+      const [first, second] = candidates
+      let west = first
+      let north = second
+
+      if (first !== undefined && second !== undefined && !slopesLikeWestWall(first)) {
+        west = second
+        north = first
       }
+
+      walls.set(
+        wallSpriteKey(id, WallSide.West, style),
+        west ?? drawEdgeWall(WallSide.West, id === Wall.Window),
+      )
+      walls.set(
+        wallSpriteKey(id, WallSide.North, style),
+        north ?? drawEdgeWall(WallSide.North, id === Wall.Window),
+      )
     }
   })
 

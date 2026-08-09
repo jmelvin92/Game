@@ -35,7 +35,9 @@ export interface Grid {
 
   /** The roof over this tile; 0 for open sky. */
   roofAt(x: number, y: number): number
-  setRoof(x: number, y: number, style: number): void
+  /** How far this part of the roof rises above the eaves, in steps. */
+  roofHeightAt(x: number, y: number): number
+  setRoof(x: number, y: number, style: number, height?: number): void
 }
 
 export function createGrid(width: number, height: number, fill: TileId): Grid {
@@ -50,6 +52,7 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
 
   const buildings = new Uint16Array(area)
   const roofs = new Uint8Array(area)
+  const roofHeights = new Uint8Array(area)
 
   const contains = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < width && y < height
 
@@ -104,9 +107,15 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
       return roofs[y * width + x] ?? 0
     },
 
-    setRoof(x: number, y: number, style: number): void {
+    roofHeightAt(x: number, y: number): number {
+      if (!contains(x, y)) return 0
+      return roofHeights[y * width + x] ?? 0
+    },
+
+    setRoof(x: number, y: number, style: number, height = 0): void {
       if (!contains(x, y)) return
       roofs[y * width + x] = style
+      roofHeights[y * width + x] = height
     },
   }
 }

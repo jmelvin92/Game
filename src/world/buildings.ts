@@ -25,6 +25,8 @@ export interface Archetype {
   /** Which wall art to use. Interpreted only by the renderer. */
   readonly wallStyle: number
   readonly roofStyle: number
+  /** How many steps the roof climbs before flattening off. 0 is a flat roof. */
+  readonly roofRise: number
   readonly floor: TileId
   /** Smallest a subdivided room may get. Large values mean open-plan. */
   readonly minRoom: number
@@ -36,7 +38,18 @@ export interface Archetype {
  * Wall styles map to art in `render/sprites.ts`; roof styles to colours there too.
  * They are plain numbers here because `world/` must not know what brick looks like.
  */
-export const WallStyle = { Brick: 0, Stone: 1, Wood: 2 } as const
+export const WallStyle = {
+  Brick: 0,
+  Stone: 1,
+  Wood: 2,
+  /** Building facades from the town pack — multi-storey fronts with real windows. */
+  Apartment: 3,
+  Stucco: 4,
+  GlassTower: 5,
+  Shopfront: 6,
+  Concrete: 7,
+  Industrial: 8,
+} as const
 
 export const ARCHETYPES: readonly Archetype[] = [
   {
@@ -46,6 +59,7 @@ export const ARCHETYPES: readonly Archetype[] = [
     maxSize: 11,
     wallStyle: WallStyle.Wood,
     roofStyle: 1,
+    roofRise: 4,
     floor: Tile.Floorboards,
     minRoom: 3,
     windows: 0.7,
@@ -55,8 +69,9 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Residential,
     minSize: 8,
     maxSize: 12,
-    wallStyle: WallStyle.Brick,
+    wallStyle: WallStyle.Apartment,
     roofStyle: 2,
+    roofRise: 3,
     floor: Tile.Floorboards,
     minRoom: 3,
     windows: 0.6,
@@ -66,8 +81,9 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Commercial,
     minSize: 9,
     maxSize: 14,
-    wallStyle: WallStyle.Brick,
+    wallStyle: WallStyle.Shopfront,
     roofStyle: 3,
+    roofRise: 1,
     floor: Tile.Tiles,
     // Shops are one room at the front with a back office, so barely subdivided.
     minRoom: 6,
@@ -78,8 +94,9 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Commercial,
     minSize: 11,
     maxSize: 16,
-    wallStyle: WallStyle.Stone,
+    wallStyle: WallStyle.GlassTower,
     roofStyle: 4,
+    roofRise: 0,
     floor: Tile.Tiles,
     minRoom: 4,
     windows: 0.8,
@@ -89,8 +106,9 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Industrial,
     minSize: 13,
     maxSize: 20,
-    wallStyle: WallStyle.Stone,
+    wallStyle: WallStyle.Concrete,
     roofStyle: 5,
+    roofRise: 2,
     floor: Tile.Concrete,
     // Deliberately larger than any warehouse, so the interior is left open.
     minRoom: 99,
@@ -101,8 +119,9 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Industrial,
     minSize: 10,
     maxSize: 15,
-    wallStyle: WallStyle.Brick,
+    wallStyle: WallStyle.Industrial,
     roofStyle: 6,
+    roofRise: 1,
     floor: Tile.Concrete,
     minRoom: 8,
     windows: 0.2,
@@ -141,7 +160,15 @@ export function placeBuilding(
     for (let tx = x; tx < x + w; tx++) {
       grid.set(tx, ty, archetype.floor)
       grid.setBuilding(tx, ty, id)
-      grid.setRoof(tx, ty, archetype.roofStyle)
+
+      // A hipped roof: every tile rises with its distance from the nearest eave,
+      // until it reaches the ridge. Flat-topped buildings just cap the rise at
+      // zero. Computing it here rather than in the renderer means the shape is
+      // part of the world and will survive being saved.
+      const toEdge = Math.min(tx - x, x + w - 1 - tx, ty - y, y + h - 1 - ty)
+      const rise = Math.min(toEdge, archetype.roofRise)
+
+      grid.setRoof(tx, ty, archetype.roofStyle, rise)
     }
   }
 

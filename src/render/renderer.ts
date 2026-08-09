@@ -5,6 +5,7 @@ import {
   Animation,
   ANIMATIONS,
   facingIndex,
+  ROOF_STEP,
   WALL_H,
   WALL_W,
   wallSpriteKey,
@@ -199,14 +200,17 @@ export function renderScene(
       if (sprite === undefined) continue
 
       const { sx, sy } = worldToScreen(x, y)
+      // Hipped roofs climb toward the ridge, so each tile sits at its own height.
+      const rise = grid.roofHeightAt(x, y) * ROOF_STEP
 
       standing.push({
         // A storey above the ground, and drawn after everything at this tile so it
-        // covers the walls it sits on.
-        sort: depth(x, y) + 0.25,
+        // covers the walls it sits on. Higher parts of the roof draw later still,
+        // so the ridge overlaps the courses below it rather than the reverse.
+        sort: depth(x, y) + 0.25 + grid.roofHeightAt(x, y) * 0.01,
         sprite,
         x: Math.round(ox + sx - TILE_W / 2),
-        y: Math.round(oy + sy - TILE_Z),
+        y: Math.round(oy + sy - TILE_Z - rise),
         alpha: 1,
       })
     }
