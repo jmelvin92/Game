@@ -18,7 +18,7 @@ import {
 import type { Grid } from '@/world/grid'
 import { flicker, type Light } from '@/render/lighting'
 import { LampCondition, Prop, propLight } from '@/world/props'
-import { tileDef } from '@/world/tiles'
+import { Tile, tileDef } from '@/world/tiles'
 import { isDoorLevel, isWindowLevel, Wall, WallSide } from '@/world/walls'
 
 /**
@@ -72,6 +72,17 @@ interface Bounds {
  * walk every tile in the map every frame, most of them nowhere near the camera.
  */
 function visibleBounds(grid: Grid, ox: number, oy: number, width: number, height: number): Bounds {
+  const raw = rawBounds(ox, oy, width, height)
+  return {
+    minX: Math.max(0, raw.minX),
+    minY: Math.max(0, raw.minY),
+    maxX: Math.min(grid.width - 1, raw.maxX),
+    maxY: Math.min(grid.height - 1, raw.maxY),
+  }
+}
+
+/** The same range unclamped, for the one pass that draws past the edge of the map. */
+function rawBounds(ox: number, oy: number, width: number, height: number): Bounds {
   const corners = [
     screenToWorld(-ox, -oy),
     screenToWorld(width - ox, -oy),
@@ -83,10 +94,10 @@ function visibleBounds(grid: Grid, ox: number, oy: number, width: number, height
   const ys = corners.map((c) => c.wy)
 
   return {
-    minX: Math.max(0, Math.floor(Math.min(...xs)) - CULL_PADDING),
-    minY: Math.max(0, Math.floor(Math.min(...ys)) - CULL_PADDING),
-    maxX: Math.min(grid.width - 1, Math.ceil(Math.max(...xs)) + CULL_PADDING),
-    maxY: Math.min(grid.height - 1, Math.ceil(Math.max(...ys)) + CULL_PADDING),
+    minX: Math.floor(Math.min(...xs)) - CULL_PADDING,
+    minY: Math.floor(Math.min(...ys)) - CULL_PADDING,
+    maxX: Math.ceil(Math.max(...xs)) + CULL_PADDING,
+    maxY: Math.ceil(Math.max(...ys)) + CULL_PADDING,
   }
 }
 
@@ -210,9 +221,16 @@ export function renderScene(
   const bounds = visibleBounds(grid, ox, oy, width, height)
 
   // Ground first. Flat tiles never overlap each other, so they need no sorting.
-  for (let y = bounds.minY; y <= bounds.maxY; y++) {
-    for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const variants = sprites.ground.get(grid.at(x, y))
+  //
+  // This one pass runs unclamped: the world is an island, and everywhere beyond
+  // the map is sea. Painting water past the edge is what removes the black void
+  // that otherwise shows wherever the camera can see off the map — the border is
+  // the horizon, not the end of the render.
+  const raw = rawBounds(ox, oy, width, height)
+  for (let y = raw.minY; y <= raw.maxY; y++) {
+    for (let x = raw.minX; x <= raw.maxX; x++) {
+      const tile = grid.contains(x, y) ? grid.at(x, y) : Tile.Water
+      const variants = sprites.ground.get(tile)
       if (variants === undefined || variants.length === 0) continue
 
       // Which variant a tile uses is fixed by its position, so the ground is

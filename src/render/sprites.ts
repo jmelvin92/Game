@@ -143,6 +143,9 @@ const GROUND_PALETTES: ReadonlyMap<TileId, Palette> = new Map([
   [Tile.Concrete, { base: '#6e6e6b', edge: '#5f5f5d' }],
   [Tile.Dirt, { base: '#7a6446', edge: '#68553b', speck: '#8c7554' }],
   [Tile.Rock, { base: '#6b6459', edge: '#5b554c' }],
+  [Tile.Water, { base: '#1e3346', edge: '#182a3b' }],
+  [Tile.Sand, { base: '#b3a077', edge: '#a08e69', speck: '#c2b18a' }],
+  [Tile.Soil, { base: '#6d5138', edge: '#5d452f' }],
 ])
 
 const WALL_TOP = '#b9ab95'
@@ -870,6 +873,9 @@ const GROUND_TEXTURES: ReadonlyMap<TileId, TextureRef> = new Map([
   // while the map was only a town. Open country is what they were made for.
   [Tile.Dirt, { sheet: 'dry', indices: [0, 1, 2, 5, 8] }],
   [Tile.Rock, { sheet: 'rocky', indices: [0, 3, 6, 9] }],
+  // Water and soil are drawn in code below, like the road: no pack here has
+  // either, and a placeholder diamond reads as a bug rather than a surface.
+  [Tile.Sand, { sheet: 'dry', indices: [3, 4, 6, 7] }],
 ])
 
 /**
@@ -906,6 +912,90 @@ function slopesLikeWestWall(tile: HTMLCanvasElement): boolean {
   return topOpaque(tile.width - 1 - inset) < topOpaque(inset)
 }
 
+/**
+ * Open water.
+ *
+ * Deliberately calm and dark — a dead sea to match a dead grid. The horizontal
+ * strokes are what read as water at this scale; anything busier shimmers.
+ */
+function drawWater(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(TILE_W, TILE_H)
+
+  diamondPath(ctx, 0)
+  ctx.save()
+  ctx.clip()
+
+  ctx.fillStyle = '#1e3346'
+  ctx.fillRect(0, 0, TILE_W, TILE_H)
+
+  let seed = 0x51ed270b ^ Math.imul(variant + 1, 0x9e3779b9)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+
+  // A few long, faint swells.
+  for (let i = 0; i < 5; i++) {
+    const y = 4 + random() * (TILE_H - 8)
+    const x = random() * TILE_W * 0.5
+    const length = TILE_W * (0.2 + random() * 0.35)
+    ctx.strokeStyle = random() > 0.5 ? 'rgba(150, 180, 205, 0.10)' : 'rgba(10, 18, 28, 0.22)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + length, y + (random() - 0.5) * 2)
+    ctx.stroke()
+  }
+
+  ctx.restore()
+  return element
+}
+
+/**
+ * Ploughed earth.
+ *
+ * The furrows run along one tile axis so a whole field shares a direction, which
+ * is most of what makes it read as worked land rather than mud.
+ */
+function drawSoil(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(TILE_W, TILE_H)
+
+  diamondPath(ctx, 0)
+  ctx.save()
+  ctx.clip()
+
+  ctx.fillStyle = '#6d5138'
+  ctx.fillRect(0, 0, TILE_W, TILE_H)
+
+  // Furrows are the line family x/W + y/H = c, which runs parallel to the tile's
+  // top-right edge. Crossing into the neighbouring tile shifts c by exactly 1, so
+  // with an even row count both the spacing and the light/dark alternation carry
+  // straight across a field without a seam.
+  const rows = 6
+  for (let i = 0; i < rows; i++) {
+    const c = 0.5 + (i + 0.5) / rows
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(40, 28, 17, 0.5)' : 'rgba(140, 110, 78, 0.35)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(-TILE_W, (c + 1) * TILE_H)
+    ctx.lineTo(2 * TILE_W, (c - 2) * TILE_H)
+    ctx.stroke()
+  }
+
+  let seed = 0x1b873593 ^ Math.imul(variant + 1, 0x85ebca6b)
+  const random = (): number => {
+    seed = Math.imul(seed ^ (seed >>> 15), 0x2545f491)
+    return ((seed ^ (seed >>> 13)) >>> 0) / 4294967296
+  }
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = random() > 0.5 ? 'rgba(30, 20, 12, 0.3)' : 'rgba(150, 120, 85, 0.28)'
+    ctx.fillRect(random() * TILE_W, random() * TILE_H, 1, 1)
+  }
+
+  ctx.restore()
+  return element
+}
+
 /** One character's art: animation, then facing, then frame. */
 export type CharacterSheets = ReadonlyMap<AnimationId, readonly (readonly HTMLCanvasElement[])[]>
 
@@ -930,6 +1020,8 @@ export function buildSprites(
   }
 
   ground.set(Tile.Road, [0, 1, 2, 3].map(drawAsphalt))
+  ground.set(Tile.Water, [0, 1, 2, 3].map(drawWater))
+  ground.set(Tile.Soil, [0, 1, 2].map(drawSoil))
 
   // Walls: one sprite per (kind, side, material). The art ships a separate render
   // for each facing rather than a mirror, because the coursing and lighting differ.
