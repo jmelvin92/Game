@@ -95,9 +95,52 @@ interface Standing {
   readonly sprite: HTMLCanvasElement
   readonly x: number
   readonly y: number
-  readonly alpha: number
+  /** Not readonly: the occlusion pass lowers it for anything covering the player. */
+  alpha: number
   /** 0 to 1. Darkens the sprite, for surfaces turned away from the sun. */
   readonly shade?: number
+}
+
+/** How much of a thing is left showing when it is covering the player. */
+const OCCLUDER_ALPHA = 0.24
+
+/** Screen pixels around the player within which an occluder starts to fade. */
+const OCCLUDER_MARGIN = 26
+
+/**
+ * Fades anything drawn on top of the player that overlaps them.
+ *
+ * The wall cutaway cannot do this job. It fades by distance in world space, which
+ * was right when a wall was one course tall — but a five-storey building reaches
+ * far up the screen, so its base can be well away from the player while its upper
+ * courses sit squarely over them. Roofs were never faded at all.
+ *
+ * Occlusion is a screen-space problem, so this is a screen-space test: is it drawn
+ * later than the player, and does its rectangle overlap theirs. That catches walls,
+ * roofs, trees and anything added later without any of them having to know.
+ */
+function revealPlayer(standing: Standing[], player: Standing): void {
+  const left = player.x - OCCLUDER_MARGIN
+  const right = player.x + player.sprite.width + OCCLUDER_MARGIN
+  const top = player.y - OCCLUDER_MARGIN
+  const bottom = player.y + player.sprite.height + OCCLUDER_MARGIN
+
+  for (const item of standing) {
+    if (item === player) continue
+    // Only things that draw after the player can hide them.
+    if (item.sort <= player.sort) continue
+
+    if (
+      item.x + item.sprite.width < left ||
+      item.x > right ||
+      item.y + item.sprite.height < top ||
+      item.y > bottom
+    ) {
+      continue
+    }
+
+    item.alpha = Math.min(item.alpha, OCCLUDER_ALPHA)
+  }
 }
 
 /**
@@ -459,24 +502,24 @@ export function renderScene(
     moving: boolean,
     running: boolean,
     bobbing: boolean,
-  ): void => {
+  ): Standing | undefined => {
     const animation = moving ? (running ? Animation.Run : Animation.Walk) : Animation.Idle
     const { frameTime } = ANIMATIONS[animation]
 
     const cells = sprites.characters.get(name)?.get(animation)?.[facingIndex(facingX, facingY)]
-    if (cells === undefined || cells.length === 0) return
+    if (cells === undefined || cells.length === 0) return undefined
 
     // Frame count comes from the loaded art rather than the table, so a sheet
     // holding a different number than expected still plays.
     const sprite = cells[Math.floor(scene.time / frameTime) % cells.length]
-    if (sprite === undefined) return
+    if (sprite === undefined) return undefined
 
     const { sx, sy } = worldToScreen(x, y)
     // A gentle bob while moving, for the player only — the White Eyes should not
     // read as jaunty.
     const bob = bobbing && moving ? Math.sin(scene.time * 11) * 1.6 : 0
 
-    standing.push({
+    const figure: Standing = {
       // Sorted by the tile they stand in, not their exact position, so they
       // compare consistently against that tile's walls.
       sort: depth(Math.floor(x), Math.floor(y)),
@@ -484,7 +527,10 @@ export function renderScene(
       x: Math.round(ox + sx - sprite.width / 2),
       y: Math.round(oy + sy - sprite.height + FOOT_INSET - bob),
       alpha: 1,
-    })
+    }
+
+    standing.push(figure)
+    return figure
   }
 
   for (const hunter of scene.hunters) {
@@ -501,7 +547,7 @@ export function renderScene(
     )
   }
 
-  drawFigure(
+  const player = drawFigure(
     'player',
     actor.x,
     actor.y,
@@ -511,6 +557,8 @@ export function renderScene(
     actor.running,
     true,
   )
+
+  if (player !== undefined) revealPlayer(standing, player)
 
   standing.sort((a, b) => a.sort - b.sort)
 
