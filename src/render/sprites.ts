@@ -61,13 +61,11 @@ export interface AnimationDef {
 }
 
 export const ANIMATIONS: Readonly<Record<AnimationId, AnimationDef>> = {
-  // Frame counts are per sheet, and they differ: the supplied idle and walk sheets
-  // hold four frames per direction, the run sheet six. Detected from the art rather
-  // than assumed, because the three do not match.
+  // All three sheets are 25 frames per direction. Frame *rate* is what separates
+  // them: an idle breathes slowly, a run cycles over roughly twice a second.
   [Animation.Idle]: { frames: 25, frameTime: 0.09 },
-  [Animation.Walk]: { frames: 4, frameTime: 0.14 },
-  // A run cycle turns over faster than a walk, which is most of what sells it.
-  [Animation.Run]: { frames: 6, frameTime: 0.07 },
+  [Animation.Walk]: { frames: 25, frameTime: 0.045 },
+  [Animation.Run]: { frames: 25, frameTime: 0.03 },
 }
 
 /** Directions per sheet row. Frames per row vary by animation — see ANIMATIONS. */

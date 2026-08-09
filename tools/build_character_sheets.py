@@ -64,7 +64,7 @@ def frames_for(root: Path, animation: str, direction: str) -> list[Image.Image]:
     return [Image.open(p).convert('RGBA') for p in sorted(folder.glob('*.png'))]
 
 
-def build(zip_path: Path, animation: str) -> None:
+def build(zip_path: Path, animations: list[str]) -> None:
     with TemporaryDirectory() as tmp:
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(tmp)
@@ -76,18 +76,31 @@ def build(zip_path: Path, animation: str) -> None:
             if len(nested) == 1:
                 root = nested[0]
 
-        directions = {name for name, _ in FACINGS}
-        loaded = {d: frames_for(root, animation, d) for d in directions}
+        directions = sorted({name for name, _ in FACINGS})
+        loaded = {
+            animation: {d: frames_for(root, animation, d) for d in directions}
+            for animation in animations
+        }
 
-        counts = {d: len(f) for d, f in loaded.items()}
-        if len(set(counts.values())) != 1:
-            sys.exit(f'Directions disagree on frame count: {counts}')
-        frame_count = next(iter(counts.values()))
+        for animation, by_direction in loaded.items():
+            counts = {d: len(f) for d, f in by_direction.items()}
+            if len(set(counts.values())) != 1:
+                sys.exit(f'{animation}: directions disagree on frame count: {counts}')
 
-        # One crop box for every frame of every direction. Cropping each frame to
-        # its own content would be tighter, but the character would then shift
-        # around inside the cell as limbs moved — which reads as sliding feet.
-        boxes = [f.getbbox() for frames in loaded.values() for f in frames if f.getbbox()]
+        # One crop box across every animation, not one per animation.
+        #
+        # Two reasons. Within an animation, cropping each frame to its own content
+        # would centre the character differently in each and the feet would slide.
+        # Across animations, a running pose throws the limbs much wider than an
+        # idle one — so a per-animation box makes the cells different widths, and
+        # the character visibly jumps sideways the moment they start walking.
+        boxes = [
+            f.getbbox()
+            for by_direction in loaded.values()
+            for frames in by_direction.values()
+            for f in frames
+            if f.getbbox()
+        ]
         left = min(b[0] for b in boxes)
         top = min(b[1] for b in boxes)
         right = max(b[2] for b in boxes)
@@ -97,28 +110,30 @@ def build(zip_path: Path, animation: str) -> None:
         cell_w = max(1, round((right - left) * scale))
         cell_h = max(1, round((bottom - top) * scale))
 
-        sheet = Image.new('RGBA', (cell_w * frame_count, cell_h * len(FACINGS)), (0, 0, 0, 0))
-
-        for row, (direction, mirrored) in enumerate(FACINGS):
-            for column, frame in enumerate(loaded[direction]):
-                cell = frame.crop((left, top, right, bottom))
-                cell = cell.resize((cell_w, cell_h), Image.LANCZOS)
-                if mirrored:
-                    cell = ImageOps.mirror(cell)
-                sheet.paste(cell, (column * cell_w, row * cell_h), cell)
-
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        out = OUT_DIR / f'{animation}.png'
-        sheet.save(out)
+        print(f'shared cell {cell_w} x {cell_h}  (character {TARGET_HEIGHT}px tall)\n')
 
-        print(f'{animation}: {frame_count} frames x {len(FACINGS)} facings')
-        print(f'  cell   {cell_w} x {cell_h}  (character {TARGET_HEIGHT}px tall)')
-        print(f'  sheet  {sheet.size[0]} x {sheet.size[1]}')
-        print(f'  wrote  {out.relative_to(REPO)}')
-        print(f'\n  Set ANIMATIONS.{animation}.frames = {frame_count} in src/render/sprites.ts')
+        for animation, by_direction in loaded.items():
+            frame_count = len(next(iter(by_direction.values())))
+            sheet = Image.new('RGBA', (cell_w * frame_count, cell_h * len(FACINGS)), (0, 0, 0, 0))
+
+            for row, (direction, mirrored) in enumerate(FACINGS):
+                for column, frame in enumerate(by_direction[direction]):
+                    cell = frame.crop((left, top, right, bottom)).resize(
+                        (cell_w, cell_h), Image.LANCZOS
+                    )
+                    if mirrored:
+                        cell = ImageOps.mirror(cell)
+                    sheet.paste(cell, (column * cell_w, row * cell_h), cell)
+
+            out = OUT_DIR / f'{animation}.png'
+            sheet.save(out)
+            print(f'{animation:5} {frame_count} frames x {len(FACINGS)} facings'
+                  f'  ->  {out.relative_to(REPO)}  ({sheet.size[0]} x {sheet.size[1]})')
+            print(f'      set ANIMATIONS.{animation}.frames = {frame_count}')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        sys.exit('usage: build_character_sheets.py <export.zip> <idle|walk|run>')
-    build(Path(sys.argv[1]).expanduser(), sys.argv[2])
+    if len(sys.argv) < 3:
+        sys.exit('usage: build_character_sheets.py <export.zip> <animation> [animation ...]')
+    build(Path(sys.argv[1]).expanduser(), sys.argv[2:])
