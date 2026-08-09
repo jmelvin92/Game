@@ -25,11 +25,3 @@ npm-debug.log*
 .env
 .env.local
 .env.*.local
-
-# Character art pending licence confirmation — see ATTRIBUTION.md.
-# Remove this entry once its origin is known.
-public/sprites/
-
-# Audio and cutscene pending licence confirmation — see ATTRIBUTION.md.
-public/audio/
-public/video-*.mp4

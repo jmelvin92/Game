@@ -1,0 +1,61 @@
+{
+  "footstep-grass": [
+    "/audio/footstep-grass-01.wav",
+    "/audio/footstep-grass-02.wav",
+    "/audio/footstep-grass-03.wav",
+    "/audio/footstep-grass-04.wav",
+    "/audio/footstep-grass-05.wav",
+    "/audio/footstep-grass-06.wav",
+    "/audio/footstep-grass-07.wav",
+    "/audio/footstep-grass-08.wav",
+    "/audio/footstep-grass-09.wav",
+    "/audio/footstep-grass-10.wav",
+    "/audio/footstep-grass-11.wav",
+    "/audio/footstep-grass-12.wav",
+    "/audio/footstep-grass-13.wav",
+    "/audio/footstep-grass-14.wav",
+    "/audio/footstep-grass-15.wav",
+    "/audio/footstep-grass-16.wav",
+    "/audio/footstep-grass-17.wav",
+    "/audio/footstep-grass-18.wav",
+    "/audio/footstep-grass-19.wav",
+    "/audio/footstep-grass-20.wav"
+  ],
+  "footstep-road": [
+    "/audio/footstep-road-01.wav",
+    "/audio/footstep-road-02.wav",
+    "/audio/footstep-road-03.wav",
+    "/audio/footstep-road-04.wav",
+    "/audio/footstep-road-05.wav",
+    "/audio/footstep-road-06.wav",
+    "/audio/footstep-road-07.wav",
+    "/audio/footstep-road-08.wav",
+    "/audio/footstep-road-09.wav",
+    "/audio/footstep-road-10.wav",
+    "/audio/footstep-road-11.wav",
+    "/audio/footstep-road-12.wav",
+    "/audio/footstep-road-13.wav",
+    "/audio/footstep-road-14.wav",
+    "/audio/footstep-road-15.wav",
+    "/audio/footstep-road-16.wav",
+    "/audio/footstep-road-17.wav",
+    "/audio/footstep-road-18.wav",
+    "/audio/footstep-road-19.wav",
+    "/audio/footstep-road-20.wav"
+  ],
+  "footstep-sidewalk": [
+    "/audio/footstep-sidewalk-01.wav",
+    "/audio/footstep-sidewalk-02.wav",
+    "/audio/footstep-sidewalk-03.wav",
+    "/audio/footstep-sidewalk-04.wav",
+    "/audio/footstep-sidewalk-05.wav",
+    "/audio/footstep-sidewalk-06.wav",
+    "/audio/footstep-sidewalk-07.wav",
+    "/audio/footstep-sidewalk-08.wav",
+    "/audio/footstep-sidewalk-09.wav",
+    "/audio/footstep-sidewalk-10.wav"
+  ],
+  "notice": [
+    "/audio/notice.wav"
+  ]
+}
