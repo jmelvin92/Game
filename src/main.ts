@@ -4,6 +4,7 @@ import { createRng } from '@/core/rng'
 import { createClock } from '@/core/time'
 import { startLoop } from '@/core/loop'
 import { createActor } from '@/entity/actor'
+import { createInventory } from '@/entity/inventory'
 import { createFootsteps } from '@/entity/footsteps'
 import { createHunterPack } from '@/entity/hunters'
 import { canChannel, channel, createVitals, updateVitals } from '@/entity/vitals'
@@ -13,6 +14,7 @@ import { TILE_H, TILE_W } from '@/render/iso'
 import { gradeDaylight, sunAt } from '@/render/daylight'
 import { applyGrade, createGrade } from '@/render/grade'
 import { darknessAt, renderLighting } from '@/render/lighting'
+import { renderInventory } from '@/render/inventoryOverlay'
 import { drawHud, renderScene } from '@/render/renderer'
 import { renderVitals } from '@/render/vitalsOverlay'
 import {
@@ -113,6 +115,13 @@ window.addEventListener(
 )
 
 window.addEventListener('keydown', (event) => {
+  // The backpack. preventDefault matters: Tab otherwise moves browser focus,
+  // and the second press goes to whatever it landed on instead of the game.
+  if (event.code === 'Tab') {
+    event.preventDefault()
+    backpackOpen = !backpackOpen
+  }
+
   // Time controls. Anything to do with light has to be judged while it changes,
   // and a twenty-minute day is far too slow to tune dusk against.
   if (event.code === 'BracketLeft') clock.setDayLength(clock.dayLength() * 2)
@@ -271,6 +280,7 @@ function playPositional(name: string, x: number, y: number, loudest: number, rat
 }
 
 const vitals = createVitals()
+const inventory = createInventory()
 const hunters = createHunterPack()
 
 // One generator for everything that happens during play, seeded apart from the
@@ -353,7 +363,7 @@ if (import.meta.env.DEV) {
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
   Object.defineProperty(window, 'game', {
-    value: { grid, actor, camera, input, clock, vitals, hunters, sunAt, grade },
+    value: { grid, actor, camera, input, clock, vitals, hunters, inventory, sunAt, grade },
   })
 }
 
@@ -388,6 +398,12 @@ let elapsed = 0
 
 /** 2 shows the full readout, 1 the clock alone, 0 nothing. Cycled with H. */
 let hudDetail = 2
+
+/**
+ * Whether the backpack panel is up. UI state, so it lives here with the input
+ * that flips it — the inventory itself neither knows nor cares.
+ */
+let backpackOpen = false
 
 startLoop(
   (step) => {
@@ -493,6 +509,7 @@ startLoop(
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
     renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed, hunters.noticedFor)
+    if (backpackOpen) renderInventory(ctx, viewWidth, viewHeight, inventory)
     if (hudDetail > 0) {
       drawHud(ctx, {
         actor,

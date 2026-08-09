@@ -688,12 +688,12 @@ export function drawHud(ctx: CanvasRenderingContext2D, options: HudOptions): voi
   ctx.textBaseline = 'top'
 
   const lines = [
-    'WASD walk · shift run · F torch · E power · wheel zoom · [ ] speed · , . hour · \\ pause · H hide',
+    'WASD walk · shift run · F torch · E power · tab bag · wheel zoom · [ ] speed · , . hour · \\ pause · H hide',
     `${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}`,
   ]
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-  ctx.fillRect(10, 10, 500, 8 + lines.length * 16)
+  ctx.fillRect(10, 10, 560, 8 + lines.length * 16)
 
   ctx.fillStyle = '#d6d9de'
   lines.forEach((line, i) => {
