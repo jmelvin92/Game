@@ -50,6 +50,16 @@ export interface Grid {
   buildingAt(x: number, y: number): number
   setBuilding(x: number, y: number, id: number): void
 
+  /**
+   * Seconds of charge left in the device on this tile; 0 when dark.
+   *
+   * Stored in the world rather than in a list of active devices, because a charge
+   * is a fact about a place: it has to survive being saved, and anything that
+   * eventually cares whether somewhere is lit needs to ask the map, not a system.
+   */
+  chargeAt(x: number, y: number): number
+  setCharge(x: number, y: number, seconds: number): void
+
   /** What stands on this tile — a tree, a bush — or {@link Prop.None}. */
   propAt(x: number, y: number): PropId
   setProp(x: number, y: number, id: PropId, variant?: number): void
@@ -88,6 +98,8 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
   const roofBases = new Uint8Array(area)
   const props = new Uint8Array(area)
   const propVariants = new Uint8Array(area)
+  // Tenths of a second, so a charge of a few minutes fits a 16-bit slot.
+  const charges = new Uint16Array(area)
 
   const contains = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < width && y < height
 
@@ -144,6 +156,16 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
       buildings[y * width + x] = id
     },
 
+    chargeAt(x: number, y: number): number {
+      if (!contains(x, y)) return 0
+      return (charges[y * width + x] ?? 0) / 10
+    },
+
+    setCharge(x: number, y: number, seconds: number): void {
+      if (!contains(x, y)) return
+      charges[y * width + x] = Math.max(0, Math.min(6553, Math.round(seconds * 10)))
+    },
+
     propAt(x: number, y: number): PropId {
       if (!contains(x, y)) return Prop.None
       return (props[y * width + x] ?? Prop.None) as PropId
@@ -181,5 +203,21 @@ export function createGrid(width: number, height: number, fill: TileId): Grid {
       roofHeights[y * width + x] = height
       roofBases[y * width + x] = base
     },
+  }
+}
+
+/**
+ * Runs every charged device down by one step.
+ *
+ * A full sweep of the map each frame rather than a list of what is active. At this
+ * size it is far cheaper than the bookkeeping a list would need, and it cannot
+ * drift out of step with the map the way a parallel list can.
+ */
+export function drainCharges(grid: Grid, step: number): void {
+  for (let y = 0; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      const charge = grid.chargeAt(x, y)
+      if (charge > 0) grid.setCharge(x, y, charge - step)
+    }
   }
 }

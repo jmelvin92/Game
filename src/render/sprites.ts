@@ -1,7 +1,7 @@
 import { TILE_H, TILE_W } from '@/render/iso'
 import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
-import { LampState, Prop, PROP_VARIANTS, type PropId } from '@/world/props'
+import { LampCondition, Prop, PROP_VARIANTS, type PropId } from '@/world/props'
 import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
 
 /**
@@ -680,14 +680,14 @@ function drawLampPost(variant: number): HTMLCanvasElement {
   ctx.roundRect(cx + reach - 9, groundY - height - 16, 18, 8, 2)
   ctx.fill()
 
-  // Variant is the lamp's state, not a random style: a broken lamp must look
-  // broken whether or not the lighting pass is running.
+  // Unlit glass. Nothing in this world is energised on its own, so a lamp is dark
+  // until the player pays for it; only its condition shows, not its power.
   ctx.fillStyle =
-    variant === LampState.Broken
-      ? '#3c4048'
-      : variant === LampState.Flickering
-        ? '#c9b083'
-        : '#ffd9a0'
+    variant === LampCondition.Broken
+      ? '#2f333a'
+      : variant === LampCondition.Damaged
+        ? '#4b4f57'
+        : '#5a5f68'
   ctx.beginPath()
   ctx.ellipse(cx + reach, groundY - height - 7, 6.5, 3.5, 0, 0, Math.PI * 2)
   ctx.fill()

@@ -18,35 +18,42 @@ codebase nor a non-programmer reviewer.
 
 ### The direction so far
 
-**A modern city, seen isometrically, with a human character you control.** Joshua describes the
-feel as Project Zomboid blended with The Sims — Zomboid's city, scale and grounded texture, but
-without the commitment to survival horror that name implies.
+**A post-apocalyptic survival game built around light and electricity.**
 
-This is a **working direction, not a commitment.** Joshua's words: "it can change later." Treat it
-as enough to justify a road, a sidewalk and a person, and not as licence to invent what has not
-been discussed.
+The world's power is dead — completely. Nothing is lit that the player has not lit
+themselves, which is why the streets are dark and every lamp starts cold.
 
-### Decided: every building is enterable
+The character has a supernatural gift: they can energise anything that runs on
+electricity. Street lamps today; jukeboxes, vehicles, refrigerators later. **The
+gift is the game's currency** — it is spent, not repaired with. Devices differ only
+in what they cost, how long they hold a charge, and what they do while lit, so
+adding one is a table entry rather than a new mechanic.
 
-**Interiors are core, not a later feature.** Joshua: "yes I will want all buildings enterable."
+Two costs bind it. Channelling drains power, which **only daylight restores**, and
+it takes health, which nothing restores yet. The player is expected to die
+eventually.
 
-This is the most constraining decision made so far, and it rules things out. It is why walls sit on
-tile **edges** rather than filling tiles — a solid-tile wall cannot have a doorway or a window, and
-a building made of them has no inside. It is also why several otherwise-excellent asset packs are
-unusable: packs that ship a house as a single sprite (Buggy Studio's modern city pack, most
-city-builder art) are for cities you move _through_, not _into_.
+Two threats are planned and **neither is built**:
 
-Any future art or system has to answer: can you walk inside it?
+- Something that can only exist or attack in darkness, so light is protection.
+- Something drawn _to_ light, which comes to kill or take the player. It does not
+  always come, and there is a warning when it does — the intention is that lamps
+  begin to flicker, reusing a signal the player has already learned means
+  "unreliable".
+
+Together those mean light is never simply good: it protects, it costs health, and
+it advertises. Do not quietly resolve that tension in any one direction.
+
+**Not zombies.** That was an early reference point for perspective and scale only.
 
 ### Still genuinely undecided
 
-The things that make it a _game_ rather than a walkable city: what the player is trying to do,
-what opposes them, whether there are enemies at all, whether there is combat, crafting, needs, a
-day cycle, or a win condition. **None of that has been agreed.** Do not add any of it, and do not
-infer it from the Project Zomboid reference — the early plan deliberately deferred every one of
-these until the engine could be walked around in.
-
-If a task seems to require one of those decisions, stop and ask.
+- **What carries over when the player dies.** Joshua wants milestones with no
+  ending, and also expects death. Something has to persist — repaired devices, map
+  knowledge, reclaimed districts — or the milestones never accumulate.
+- **What fills the daytime.** Recharging is passive; scouting and repairing devices
+  are the obvious candidates but nothing is built.
+- **Whether health can be restored at all.**
 
 ### The line to hold
 

@@ -22,17 +22,15 @@ export interface Vitals {
 /** Power restored per second in full daylight. A day fills roughly two thirds. */
 const RECHARGE_RATE = 1 / 900
 
-/** Cost of waking one lamp. */
-export const CHANNEL_POWER_COST = 0.16
-
 /**
- * What waking a lamp takes out of the body.
+ * What channelling takes out of the body, per unit of power spent.
  *
- * Deliberately not proportional to how much power is left: the gift costs the same
- * whether you are fresh or nearly empty, so running low never becomes a reason to
- * use it more freely.
+ * Proportional to the power spent rather than flat, now that devices cost
+ * different amounts: waking a vehicle should cost more of you than waking a lamp.
+ * It is not proportional to what is *left*, though — running low must never become
+ * a reason to use the gift more freely.
  */
-export const CHANNEL_HEALTH_COST = 0.045
+export const HEALTH_PER_POWER = 0.28
 
 /** How long the after-effect of channelling lingers, in seconds. */
 const STRAIN_DURATION = 2.4
@@ -49,13 +47,14 @@ export function updateVitals(vitals: Vitals, step: number, daylight: number): vo
   vitals.strainFor = Math.max(0, vitals.strainFor - step)
 }
 
-/** True if there is enough left to wake a lamp. */
-export function canChannel(vitals: Vitals): boolean {
-  return vitals.power >= CHANNEL_POWER_COST && vitals.health > CHANNEL_HEALTH_COST
+/** True if there is enough of both to energise something costing `cost`. */
+export function canChannel(vitals: Vitals, cost: number): boolean {
+  return vitals.power >= cost && vitals.health > cost * HEALTH_PER_POWER
 }
 
-export function channel(vitals: Vitals): void {
-  vitals.power = Math.max(0, vitals.power - CHANNEL_POWER_COST)
-  vitals.health = Math.max(0, vitals.health - CHANNEL_HEALTH_COST)
-  vitals.strainFor = STRAIN_DURATION
+export function channel(vitals: Vitals, cost: number): void {
+  vitals.power = Math.max(0, vitals.power - cost)
+  vitals.health = Math.max(0, vitals.health - cost * HEALTH_PER_POWER)
+  // Bigger draws leave you reeling for longer.
+  vitals.strainFor = STRAIN_DURATION * Math.min(2, 0.6 + cost * 2.5)
 }

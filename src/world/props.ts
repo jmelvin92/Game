@@ -86,32 +86,58 @@ export function propLight(id: PropId): PropLight | undefined {
 }
 
 /**
- * What state a lamp is in, stored as its prop variant.
+ * The physical condition of a lamp, stored as its prop variant.
  *
- * A world fact rather than a rendering one: whether a street is lit changes what
- * can be seen and, eventually, where it is safe to walk. How a flicker *looks* is
- * the renderer's business, but whether the lamp is broken is not.
+ * Condition, not power state. Nothing in this world is energised on its own — the
+ * grid is dead — so a lamp is only ever dark or lit by the player. What condition
+ * decides is whether it *can* be lit, and how well it holds a charge once it is.
  */
-export const LampState = {
-  Working: 0,
-  Flickering: 1,
+export const LampCondition = {
+  Intact: 0,
+  /** Lights, but stutters the whole time it is running. */
+  Damaged: 1,
+  /** Cannot hold a charge at all until repaired. */
   Broken: 2,
 } as const
 
-export type LampStateId = (typeof LampState)[keyof typeof LampState]
+export type LampConditionId = (typeof LampCondition)[keyof typeof LampCondition]
+
+/**
+ * Anything that runs on electricity.
+ *
+ * The gift is not a repair tool — it is the only source of power left, and this is
+ * the list of what it can be spent on. A street lamp today; a jukebox, a vehicle, a
+ * refrigerator later. They differ only in what they cost, how long they hold a
+ * charge, and what they do while they hold it, so adding one is a table entry
+ * rather than a new mechanic.
+ */
+export interface DeviceDef {
+  readonly name: string
+  /** Fraction of a full charge to energise it. */
+  readonly cost: number
+  /** Seconds it runs before going dark again. */
+  readonly duration: number
+}
+
+const DEVICES: Partial<Readonly<Record<PropId, DeviceDef>>> = {
+  [Prop.LampPost]: { name: 'street lamp', cost: 0.16, duration: 150 },
+}
+
+export function deviceDef(id: PropId): DeviceDef | undefined {
+  return DEVICES[id]
+}
 
 export function propDef(id: PropId): PropDef {
   return DEFS[id]
 }
 
 /**
- * The nearest lamp within reach of a position, or undefined.
+ * The nearest powerable device within reach of a position, or undefined.
  *
- * A world query rather than something the renderer or input layer works out, so
- * anything that needs to find a lamp — the player now, something else later —
- * asks the same question of the same place.
+ * A world query rather than something the input layer works out, so anything that
+ * needs to find something to energise asks the same question of the same place.
  */
-export function nearestLamp(
+export function nearestDevice(
   grid: {
     propAt(x: number, y: number): PropId
     propVariantAt(x: number, y: number): number
@@ -119,14 +145,15 @@ export function nearestLamp(
   x: number,
   y: number,
   reach: number,
-): { x: number; y: number; state: number } | undefined {
+): { x: number; y: number; prop: PropId; condition: number } | undefined {
   const radius = Math.ceil(reach)
-  let best: { x: number; y: number; state: number } | undefined
+  let best: { x: number; y: number; prop: PropId; condition: number } | undefined
   let bestDistance = reach * reach
 
   for (let ty = Math.floor(y) - radius; ty <= Math.floor(y) + radius; ty++) {
     for (let tx = Math.floor(x) - radius; tx <= Math.floor(x) + radius; tx++) {
-      if (grid.propAt(tx, ty) !== Prop.LampPost) continue
+      const prop = grid.propAt(tx, ty)
+      if (deviceDef(prop) === undefined) continue
 
       const dx = tx + 0.5 - x
       const dy = ty + 0.5 - y
@@ -134,7 +161,7 @@ export function nearestLamp(
       if (distance > bestDistance) continue
 
       bestDistance = distance
-      best = { x: tx, y: ty, state: grid.propVariantAt(tx, ty) }
+      best = { x: tx, y: ty, prop, condition: grid.propVariantAt(tx, ty) }
     }
   }
 

@@ -14,7 +14,7 @@ import {
 } from '@/render/sprites'
 import type { Grid } from '@/world/grid'
 import { flicker, type Light } from '@/render/lighting'
-import { LampState, Prop, propLight } from '@/world/props'
+import { LampCondition, Prop, propLight } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 import { Wall, WallSide } from '@/world/walls'
 
@@ -319,16 +319,20 @@ export function renderScene(
       const emitted = propLight(prop)
       if (emitted === undefined) continue
 
-      // A lamp's state lives in its variant. Broken ones emit nothing at all;
-      // flickering ones stutter on their own rhythm so a street never blinks in
-      // unison.
-      const state = grid.propVariantAt(x, y)
-      if (state === LampState.Broken) continue
+      // Nothing is lit unless the player has paid for it. A device with no charge
+      // left is simply dark, which is why the whole town is.
+      const charge = grid.chargeAt(x, y)
+      if (charge <= 0) continue
 
-      const strength =
-        state === LampState.Flickering
-          ? emitted.strength * flicker(x * 7 + y * 13, scene.time)
-          : emitted.strength
+      const condition = grid.propVariantAt(x, y)
+
+      // Damaged fittings stutter the entire time they burn, each on its own
+      // rhythm so a street never blinks in unison. And every device gutters as its
+      // charge runs out, which is the only warning that it is about to go.
+      const dying = Math.min(1, charge / 12)
+      const stutter = condition === LampCondition.Damaged ? flicker(x * 7 + y * 13, scene.time) : 1
+
+      const strength = emitted.strength * stutter * dying
 
       const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
       lights.push({

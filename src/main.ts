@@ -22,8 +22,9 @@ import {
   type AnimationId,
 } from '@/render/sprites'
 import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
+import { drainCharges } from '@/world/grid'
 import { createSandbox, SPAWN } from '@/world/sandbox'
-import { LampState, nearestLamp, Prop } from '@/world/props'
+import { deviceDef, LampCondition, nearestDevice } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 
 /**
@@ -201,17 +202,24 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyF') torchOn = !torchOn
 
   if (event.code === 'KeyE') {
-    const lamp = nearestLamp(grid, actor.x, actor.y, CHANNEL_REACH)
+    const device = nearestDevice(grid, actor.x, actor.y, CHANNEL_REACH)
+    if (device === undefined) return
 
-    // A broken lamp cannot be woken — it needs repairing first, which is daytime
-    // work and does not exist yet. Refusing here rather than silently doing
-    // nothing is what will make that gap obvious when it matters.
-    if (lamp === undefined || lamp.state === LampState.Broken) return
-    if (lamp.state === LampState.Working) return
-    if (!canChannel(vitals)) return
+    const definition = deviceDef(device.prop)
+    if (definition === undefined) return
 
-    grid.setProp(lamp.x, lamp.y, Prop.LampPost, LampState.Working)
-    channel(vitals)
+    // Broken fittings will not hold a charge until repaired, which is daytime work
+    // that does not exist yet. Refusing outright rather than silently doing nothing
+    // is what will make that gap obvious when it starts to matter.
+    if (device.condition === LampCondition.Broken) return
+
+    // Already running: topping up would let one device be kept alive indefinitely
+    // for the price of a trickle, which is not what a charge is meant to be.
+    if (grid.chargeAt(device.x, device.y) > 0) return
+    if (!canChannel(vitals, definition.cost)) return
+
+    grid.setCharge(device.x, device.y, definition.duration)
+    channel(vitals, definition.cost)
   }
 })
 
@@ -262,6 +270,7 @@ startLoop(
     // Daylight is the only thing that restores the gift, so the cycle is what
     // paces the whole loop rather than a regeneration timer.
     updateVitals(vitals, step, 1 - darknessAt(clock.fraction))
+    drainCharges(grid, step)
 
     const direction = input.direction()
     const wasX = actor.x

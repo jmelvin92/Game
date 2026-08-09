@@ -2,7 +2,7 @@ import { createRng, type Rng } from '@/core/rng'
 import { archetypesFor, placeBuilding } from '@/world/buildings'
 import { District, districtAt, districtDef, type DistrictId } from '@/world/districts'
 import { createGrid, type Grid } from '@/world/grid'
-import { LampState, Prop, PROP_VARIANTS } from '@/world/props'
+import { LampCondition, Prop, PROP_VARIANTS } from '@/world/props'
 import { Tile } from '@/world/tiles'
 
 /**
@@ -141,18 +141,20 @@ export function createSandbox(seed: number = SANDBOX_SEED): Grid {
 const LAMP_SPACING = 47
 
 /**
- * How lamps have fared. Weighted heavily toward failure — a working street light
- * should feel like a small mercy rather than the default.
+ * What condition the lamps are in. None of them are lit — the grid is dead — so
+ * this only decides what the player can do with one: an intact lamp takes a charge
+ * cleanly, a damaged one stutters while it burns, a broken one needs repairing
+ * before it will take anything at all.
  */
-const LAMP_STATES = [
-  LampState.Broken,
-  LampState.Broken,
-  LampState.Broken,
-  LampState.Broken,
-  LampState.Flickering,
-  LampState.Flickering,
-  LampState.Working,
-  LampState.Working,
+const LAMP_CONDITIONS = [
+  LampCondition.Broken,
+  LampCondition.Broken,
+  LampCondition.Broken,
+  LampCondition.Damaged,
+  LampCondition.Damaged,
+  LampCondition.Intact,
+  LampCondition.Intact,
+  LampCondition.Intact,
 ] as const
 
 /**
@@ -179,7 +181,7 @@ function placeStreetLights(grid: Grid, rng: Rng): void {
         grid.at(x, y - 1) === Tile.Grass
       if (!beside) continue
 
-      grid.setProp(x, y, Prop.LampPost, rng.pick(LAMP_STATES))
+      grid.setProp(x, y, Prop.LampPost, rng.pick(LAMP_CONDITIONS))
     }
   }
 }
