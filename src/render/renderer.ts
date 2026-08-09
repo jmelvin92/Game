@@ -608,7 +608,7 @@ export function drawHud(
       : `  ·  day ${dayMinutes < 1 ? `${String(Math.round(dayMinutes * 60))}s` : `${dayMinutes.toFixed(1)}m`}`
 
   const lines = [
-    'WASD walk · shift run · F torch · E power · wheel zoom · [ ] time · \\ pause',
+    'WASD walk · shift run · F torch · E power · wheel zoom · [ ] speed · , . hour · \\ pause',
     `${clock.label()}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}  ·  ${zoom.toFixed(1)}x${torch ? '  ·  torch' : ''}${speed}`,
   ]
 

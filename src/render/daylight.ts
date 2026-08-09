@@ -14,6 +14,8 @@
  *   same picture at different brightnesses
  */
 
+import { sunAltitude } from '@/core/time'
+
 export interface Sun {
   /** 0 below the horizon through to 1 directly overhead. */
   readonly elevation: number
@@ -54,8 +56,12 @@ function mix(a: number, b: number, t: number): number {
 export function sunAt(fraction: number): Sun {
   const hour = fraction * 24
 
+  // Derived from the shared altitude rather than from the hour, so sunset here is
+  // necessarily the same moment as sunset in the light level. See `sunAltitude`.
+  const elevation = sunAltitude(fraction)
+
   // Below the horizon: no sun, no shadows, and the night pass takes over.
-  if (hour < 5 || hour > 20) {
+  if (elevation <= 0) {
     return {
       elevation: 0,
       shadowX: 0,
@@ -67,13 +73,10 @@ export function sunAt(fraction: number): Sun {
     }
   }
 
-  // 0 at first light, 1 at noon, back to 0 at dusk.
-  const day = (hour - 5) / 15
-  const elevation = Math.sin(day * Math.PI)
-
   // Shadows swing from pointing one way at dawn to the other at dusk, passing
-  // through short and almost directly down at noon.
-  const swing = (day - 0.5) * 2
+  // through short and almost directly down at noon. The sun is up between 06:00
+  // and 18:00, so noon is the middle of that and the swing is measured from it.
+  const swing = (hour - 12) / 6
   const length = mix(MAX_SHADOW, MIN_SHADOW, elevation)
 
   // Warm and heavy at the ends of the day, thin and neutral in the middle.

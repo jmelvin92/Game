@@ -12,6 +12,8 @@
  * reads well enough that it is not the thing you notice.
  */
 
+import { sunAltitude } from '@/core/time'
+
 export interface Light {
   /** Screen position, already offset by the camera. */
   readonly x: number
@@ -32,33 +34,59 @@ export interface Light {
 const NIGHT_COLOUR = { r: 4, g: 7, b: 19 }
 
 /**
+ * Sun altitude at or above which it is fully light.
+ *
+ * Above the horizon rather than at it, because the last of the sun does not light
+ * a street the way the middle of the afternoon does.
+ */
+const FULL_LIGHT_ALTITUDE = 0.4
+
+/**
+ * How much further the sun must sink below that before it is fully dark.
+ *
+ * This number is what sets the length of dusk and dawn, and it is deliberately
+ * large: it puts roughly half the cycle in twilight, leaving about four hours of
+ * genuine dark around midnight. Most of the atmosphere in a day/night cycle lives
+ * in the transitions, and they are also the only part where the picture is visibly
+ * changing — an earlier version gave them a linear two hours each, and the result
+ * was six real minutes of an unchanging black screen, a sunrise that arrived in
+ * ninety seconds, and a cycle that looked broken because nothing moved.
+ */
+const TWILIGHT_DEPTH = 1.25
+
+/**
  * How dark it is at a given time of day, 0 to 1.
  *
- * Dusk and dawn are stretched deliberately. Most of a day/night cycle's atmosphere
- * lives in the transitions, and rushing them wastes the best-looking part.
+ * Continuous, and derived from {@link sunAltitude} so it can never disagree with
+ * where the shadows say the sun is.
  */
 export function darknessAt(fraction: number): number {
-  const hour = fraction * 24
-
-  if (hour >= 21 || hour < 4) return 1
-  if (hour >= 19) return (hour - 19) / 2
-  if (hour < 6) return 1 - (hour - 4) / 2
-  return 0
+  const below = FULL_LIGHT_ALTITUDE - sunAltitude(fraction)
+  return Math.max(0, Math.min(1, below / TWILIGHT_DEPTH))
 }
 
-/** A tint laid over the world before darkness, warm at dusk and cold at dawn. */
+/**
+ * A tint laid over the world before darkness, warm at dusk and cold at dawn.
+ *
+ * Centred on the middle of each twilight and about as wide, so the colour arrives
+ * with the failing light rather than before or after it.
+ */
+const TWILIGHT_SPAN = 2.6
+
 export function skyTint(fraction: number): { colour: string; alpha: number } {
   const hour = fraction * 24
 
-  if (hour >= 17 && hour < 21) {
+  const dusk = 1 - Math.abs(hour - 18.9) / TWILIGHT_SPAN
+  if (dusk > 0) {
     // Evening: low sun, everything goes amber.
-    const t = 1 - Math.abs(hour - 19) / 2
-    return { colour: 'rgb(255, 138, 62)', alpha: 0.22 * t }
+    return { colour: 'rgb(255, 138, 62)', alpha: 0.22 * dusk }
   }
-  if (hour >= 4 && hour < 8) {
-    const t = 1 - Math.abs(hour - 6) / 2
-    return { colour: 'rgb(120, 150, 220)', alpha: 0.18 * t }
+
+  const dawn = 1 - Math.abs(hour - 5.1) / TWILIGHT_SPAN
+  if (dawn > 0) {
+    return { colour: 'rgb(120, 150, 220)', alpha: 0.18 * dawn }
   }
+
   return { colour: 'rgb(0, 0, 0)', alpha: 0 }
 }
 

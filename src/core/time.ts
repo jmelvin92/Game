@@ -30,6 +30,24 @@ export interface Clock {
   setPaused(paused: boolean): void
 }
 
+/**
+ * How high the sun is: +1 at noon, 0 at the horizon, -1 at midnight.
+ *
+ * The one place the sun's position is decided. Darkness, shadow length, sky colour
+ * and the recharge rate all derive from this rather than each working it out from
+ * the hour, because two functions independently modelling the same sun is precisely
+ * the kind of thing that drifts apart without anyone noticing — as it had. Sunset
+ * according to the light level was 21:00 while sunset according to the shadows was
+ * 20:00, and nothing pointed at which was wrong.
+ *
+ * A cosine rather than anything astronomical. It is continuous everywhere, which is
+ * the property that actually matters: a cycle assembled from hour thresholds sits
+ * still for minutes and then jumps, and reads as broken rather than as slow.
+ */
+export function sunAltitude(fraction: number): number {
+  return Math.cos(2 * Math.PI * (fraction - 0.5))
+}
+
 /** How many real seconds one in-game day lasts. */
 const DEFAULT_DAY_LENGTH = 20 * 60
 

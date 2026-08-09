@@ -118,6 +118,11 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'BracketLeft') clock.setDayLength(clock.dayLength() * 2)
   if (event.code === 'BracketRight') clock.setDayLength(clock.dayLength() / 2)
   if (event.code === 'Backslash') clock.setPaused(!clock.paused())
+  // Nudge time by an hour either way. Waiting out a twenty-minute cycle to see
+  // whether dawn looks right is not a workable way to judge whether dawn looks
+  // right, and halving the day length to get there changes the thing being judged.
+  if (event.code === 'Comma') clock.setHour(clock.hour() - 1)
+  if (event.code === 'Period') clock.setHour(clock.hour() + 1)
 
   if (event.code === 'Equal' || event.code === 'NumpadAdd') setZoom(zoom * 1.15)
   if (event.code === 'Minus' || event.code === 'NumpadSubtract') setZoom(zoom / 1.15)
@@ -328,9 +333,12 @@ window.addEventListener('keydown', (event) => {
   }
 })
 
-// Starts at night, which is the half worth building first and the half that shows
-// whether the lighting works at all.
-const clock = createClock(22)
+// Starts at dusk rather than in the middle of the night. Loading into full dark
+// meant the first six real minutes had no change in them at all — the clock on the
+// HUD advanced and the picture did not, which reads as a broken cycle rather than
+// as a slow one. From here the light is visibly failing within seconds and night
+// has fallen inside three minutes.
+const clock = createClock(17.5)
 // Exposed on the dev handle so it can be dialled while looking at the game.
 // Grading is judged by eye and nothing else; guessing at numbers here and
 // rebuilding to see them is the slow way to do it.
