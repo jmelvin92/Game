@@ -29,9 +29,19 @@ gift is the game's currency** — it is spent, not repaired with. Devices differ
 in what they cost, how long they hold a charge, and what they do while lit, so
 adding one is a table entry rather than a new mechanic.
 
-Two costs bind it. Channelling drains power, which **only daylight restores**, and
-it takes health, which nothing restores yet. The player is expected to die
-eventually.
+Three costs bind it. Channelling drains power, which **only daylight restores**; it
+costs health; and it permanently lowers the **ceiling** on how much health can ever
+be held again. Rest and medicine — neither built — restore health only up to that
+ceiling.
+
+The ceiling is what makes the gift a bargain rather than a resource: every device
+you wake costs a sliver of your life. It falls slowly, roughly half a percent per
+street lamp, so a night is barely felt and a fortnight is unmistakable. That single
+number decides how long a run lasts and is provisional until something else pins
+that down.
+
+It is an ordinary value that moves both ways, not a one-way count, because Joshua
+wants a late-game way to win some of it back.
 
 Two threats are planned and **neither is built**:
 
@@ -53,7 +63,12 @@ it advertises. Do not quietly resolve that tension in any one direction.
   knowledge, reclaimed districts — or the milestones never accumulate.
 - **What fills the daytime.** Recharging is passive; scouting and repairing devices
   are the obvious candidates but nothing is built.
-- **Whether health can be restored at all.**
+- **What restores health up to the ceiling.** Rest in a secure shelter is the
+  strongest candidate, and has a useful tension built in: sleeping burns daylight,
+  which is the only thing that restores power, so rest and the gift compete for the
+  same hours. Scavenged medicine is the obvious emergency source.
+- **How long a run should last.** Nothing pins this down, and the ceiling's rate of
+  loss cannot be tuned properly until it does.
 
 ### The line to hold
 

@@ -11,8 +11,20 @@
  */
 
 export interface Vitals {
-  /** 0 to 1. Nothing restores this yet, by design — decline is the direction. */
+  /** 0 to {@link Vitals.ceiling}. */
   health: number
+  /**
+   * The most health that can currently be held.
+   *
+   * Channelling takes a permanent sliver of this as well as spending health, so
+   * the gift is a bargain rather than a resource: every device you wake costs you
+   * a little of your life, and rest can only ever bring you back to the ceiling.
+   *
+   * Deliberately a plain value that moves in both directions rather than a
+   * one-way decrement, because there is meant to be a way to win some of it back
+   * later. Writing it as monotonic would be painful to reverse.
+   */
+  ceiling: number
   /** 0 to 1. Restored by daylight, spent on the gift. */
   power: number
   /** Counts down after channelling, so the drain can be felt rather than read. */
@@ -32,11 +44,28 @@ const RECHARGE_RATE = 1 / 900
  */
 export const HEALTH_PER_POWER = 0.28
 
+/**
+ * Permanent ceiling lost per unit of power channelled.
+ *
+ * A sliver — waking one lamp costs about half a percent, so it takes something
+ * like a hundred devices to halve you. The intent is that a single night is barely
+ * felt and a fortnight of them is unmistakable, which is the arc rather than a
+ * difficulty setting.
+ *
+ * This is the number that sets how long a run lasts. Nothing else in the design
+ * pins that down yet, so treat it as provisional and expect to retune it once
+ * there is a reason to survive a specific length of time.
+ */
+export const CEILING_LOSS_PER_POWER = 0.03
+
+/** The ceiling never falls below this, or a run would end without the player acting. */
+const MINIMUM_CEILING = 0.15
+
 /** How long the after-effect of channelling lingers, in seconds. */
 const STRAIN_DURATION = 2.4
 
 export function createVitals(): Vitals {
-  return { health: 1, power: 1, strainFor: 0 }
+  return { health: 1, ceiling: 1, power: 1, strainFor: 0 }
 }
 
 /**
@@ -54,7 +83,34 @@ export function canChannel(vitals: Vitals, cost: number): boolean {
 
 export function channel(vitals: Vitals, cost: number): void {
   vitals.power = Math.max(0, vitals.power - cost)
-  vitals.health = Math.max(0, vitals.health - cost * HEALTH_PER_POWER)
+  vitals.ceiling = Math.max(MINIMUM_CEILING, vitals.ceiling - cost * CEILING_LOSS_PER_POWER)
+
+  // Health is spent and then clamped, so a fallen ceiling takes effect at once
+  // rather than waiting for the next time something happens to check.
+  vitals.health = Math.min(vitals.ceiling, Math.max(0, vitals.health - cost * HEALTH_PER_POWER))
+
   // Bigger draws leave you reeling for longer.
   vitals.strainFor = STRAIN_DURATION * Math.min(2, 0.6 + cost * 2.5)
+}
+
+/**
+ * Restores health, never past the ceiling.
+ *
+ * Nothing calls this yet — rest and medicine are not built. It exists so that the
+ * rule about the ceiling lives in one place rather than being re-derived by
+ * whatever eventually heals.
+ */
+export function heal(vitals: Vitals, amount: number): void {
+  vitals.health = Math.min(vitals.ceiling, vitals.health + amount)
+}
+
+/**
+ * Wins back some of the ceiling.
+ *
+ * Also unused, and also here on purpose: Joshua wants a late-game way to recover
+ * what the gift has taken, and the only thing that makes that cheap to add later
+ * is the ceiling being an ordinary value now rather than a one-way count.
+ */
+export function restoreCeiling(vitals: Vitals, amount: number): void {
+  vitals.ceiling = Math.min(1, vitals.ceiling + amount)
 }
