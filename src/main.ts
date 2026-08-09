@@ -405,10 +405,19 @@ let hudDetail = 2
  */
 let backpackOpen = false
 
+/** How far the panel has arrived, 0..1. Driven toward the toggle each frame so
+    the bag opens in about a tenth of a second instead of teleporting in. */
+let backpackShown = 0
+
 startLoop(
   (step) => {
     elapsed += step
     clock.advance(step)
+
+    // UI easing runs on the same clock as everything else.
+    const target = backpackOpen ? 1 : 0
+    backpackShown += (target - backpackShown) * Math.min(1, step * 14)
+    if (Math.abs(target - backpackShown) < 0.01) backpackShown = target
 
     // Daylight is the only thing that restores the gift, so the cycle is what
     // paces the whole loop rather than a regeneration timer.
@@ -509,7 +518,9 @@ startLoop(
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
     renderVitals(ctx, viewWidth, viewHeight, vitals, elapsed, hunters.noticedFor)
-    if (backpackOpen) renderInventory(ctx, viewWidth, viewHeight, inventory)
+    if (backpackShown > 0.01) {
+      renderInventory(ctx, viewWidth, viewHeight, inventory, backpackShown)
+    }
     if (hudDetail > 0) {
       drawHud(ctx, {
         actor,
