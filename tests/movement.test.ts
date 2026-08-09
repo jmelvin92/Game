@@ -3,7 +3,7 @@ import { createActor } from '@/entity/actor'
 import { blocked, moveActor } from '@/entity/movement'
 import { createGrid } from '@/world/grid'
 import { Tile } from '@/world/tiles'
-import { Wall, WallSide } from '@/world/walls'
+import { blocksMovement, Wall, WallSide, type WallSideId } from '@/world/walls'
 import { createSandbox, SPAWN } from '@/world/sandbox'
 
 const STEP = 1 / 60
@@ -224,10 +224,16 @@ function floodFill(
     seen.add(key)
 
     // Movement between tiles is refused by the wall on the boundary they share.
-    if (grid.wallAt(x, y, WallSide.West) === Wall.None) queue.push([x - 1, y])
-    if (grid.wallAt(x + 1, y, WallSide.West) === Wall.None) queue.push([x + 1, y])
-    if (grid.wallAt(x, y, WallSide.North) === Wall.None) queue.push([x, y - 1])
-    if (grid.wallAt(x, y + 1, WallSide.North) === Wall.None) queue.push([x, y + 1])
+    // Asking blocksMovement rather than comparing to None matters now doorways
+    // exist: a doorway is a wall with a hole in the bottom, not an absent wall,
+    // and treating it as solid here would report every interior as sealed.
+    const open = (tx: number, ty: number, side: WallSideId): boolean =>
+      !blocksMovement(grid.wallAt(tx, ty, side))
+
+    if (open(x, y, WallSide.West)) queue.push([x - 1, y])
+    if (open(x + 1, y, WallSide.West)) queue.push([x + 1, y])
+    if (open(x, y, WallSide.North)) queue.push([x, y - 1])
+    if (open(x, y + 1, WallSide.North)) queue.push([x, y + 1])
   }
 
   return seen

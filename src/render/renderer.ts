@@ -19,7 +19,7 @@ import type { Grid } from '@/world/grid'
 import { flicker, type Light } from '@/render/lighting'
 import { LampCondition, Prop, propLight } from '@/world/props'
 import { tileDef } from '@/world/tiles'
-import { Wall, WallSide } from '@/world/walls'
+import { isDoorLevel, isWindowLevel, Wall, WallSide } from '@/world/walls'
 
 /**
  * Draws the world.
@@ -271,8 +271,10 @@ export function renderScene(
         const wall = grid.wallAt(x, y, side)
         if (wall === Wall.None) continue
 
-        const sprite = sprites.walls.get(wallSpriteKey(wall, side, grid.wallStyleAt(x, y, side)))
-        if (sprite === undefined) continue
+        const style = grid.wallStyleAt(x, y, side)
+        const solid = sprites.walls.get(wallSpriteKey(Wall.Solid, side, style))
+        const glazed = sprites.walls.get(wallSpriteKey(Wall.Window, side, style))
+        if (solid === undefined) continue
 
         // A west wall runs down-left from the tile's top vertex, so it occupies the
         // half-diamond to the left; a north wall runs down-right, occupying the
@@ -295,6 +297,16 @@ export function renderScene(
         const segments = Math.max(1, grid.wallSegmentsAt(x, y, side))
 
         for (let level = 0; level < segments; level++) {
+          // A wall's kind describes the whole boundary; which course this is
+          // decides what actually gets drawn. That distinction is the fix for two
+          // things at once: a doorway is now an opening at the bottom with wall
+          // above it rather than a slot the full height of the building, and
+          // glazing lands at storey heights instead of on every course.
+          if (wall === Wall.Doorway && isDoorLevel(level)) continue
+
+          const sprite =
+            wall === Wall.Window && isWindowLevel(level) && glazed !== undefined ? glazed : solid
+
           standing.push({
             // Walls sit on a tile's far boundaries, so they draw fractionally
             // before anything standing in that tile — that is what puts the

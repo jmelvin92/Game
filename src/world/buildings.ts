@@ -2,7 +2,7 @@ import type { Rng } from '@/core/rng'
 import { District, type DistrictId } from '@/world/districts'
 import type { Grid } from '@/world/grid'
 import { Tile, type TileId } from '@/world/tiles'
-import { Wall, WallSide } from '@/world/walls'
+import { SEGMENTS_PER_STOREY, Wall, WallSide } from '@/world/walls'
 
 /**
  * Building archetypes and how one gets stamped onto the map.
@@ -35,18 +35,8 @@ export interface Archetype {
   readonly roofStyle: number
   /** How many steps the roof climbs before flattening off. 0 is a flat roof. */
   readonly roofRise: number
-  /**
-   * Height of the walls in stacked segments.
-   *
-   * How many courses of wall art are stacked. Note this is not a storey count:
-   * the plain wall art is about a metre per segment, while the facade art already
-   * depicts two or three storeys in a single tile. Stacking facades as though they
-   * were a metre each produced thirty-storey towers on a residential street.
-   *
-   * These are set by eye against the character, who is 118px tall against a 64px
-   * segment — so three courses puts a house at roughly twice his height.
-   */
-  readonly segments: number
+  /** How many storeys the building stands. Converted to wall courses on placement. */
+  readonly storeys: number
   readonly floor: TileId
   /** Smallest a subdivided room may get. Large values mean open-plan. */
   readonly minRoom: number
@@ -58,18 +48,20 @@ export interface Archetype {
  * Wall styles map to art in `render/sprites.ts`; roof styles to colours there too.
  * They are plain numbers here because `world/` must not know what brick looks like.
  */
+/**
+ * Wall materials.
+ *
+ * Only the plain wall pack, deliberately. The town pack's facades look far better
+ * but each tile already depicts two or three storeys, so they cannot be stacked to
+ * build a taller wall — doing it gave buildings six to twelve rows of windows on
+ * two storeys of height. Plain courses stack correctly and take their glazing from
+ * the pack's own window variants at storey heights.
+ */
 export const WallStyle = {
   Brick: 0,
   /** Plain grey. Stands in for plaster on interior partitions. */
   Plaster: 1,
   Wood: 2,
-  /** Building facades from the town pack — multi-storey fronts with real windows. */
-  Apartment: 3,
-  Stucco: 4,
-  GlassTower: 5,
-  Shopfront: 6,
-  Concrete: 7,
-  Industrial: 8,
 } as const
 
 export const ARCHETYPES: readonly Archetype[] = [
@@ -78,11 +70,11 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Residential,
     minSize: 7,
     maxSize: 11,
-    wallStyle: WallStyle.Stucco,
+    wallStyle: WallStyle.Wood,
     interiorWallStyle: WallStyle.Plaster,
     roofStyle: 1,
     roofRise: 4,
-    segments: 3,
+    storeys: 2,
     floor: Tile.Floorboards,
     minRoom: 3,
     windows: 0.7,
@@ -92,11 +84,11 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Residential,
     minSize: 8,
     maxSize: 12,
-    wallStyle: WallStyle.Apartment,
+    wallStyle: WallStyle.Brick,
     interiorWallStyle: WallStyle.Plaster,
     roofStyle: 2,
     roofRise: 3,
-    segments: 2,
+    storeys: 3,
     floor: Tile.Floorboards,
     minRoom: 3,
     windows: 0.6,
@@ -106,11 +98,11 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Commercial,
     minSize: 9,
     maxSize: 14,
-    wallStyle: WallStyle.Shopfront,
+    wallStyle: WallStyle.Brick,
     interiorWallStyle: WallStyle.Plaster,
     roofStyle: 3,
     roofRise: 1,
-    segments: 2,
+    storeys: 2,
     floor: Tile.Tiles,
     // Shops are one room at the front with a back office, so barely subdivided.
     minRoom: 6,
@@ -121,11 +113,11 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Commercial,
     minSize: 11,
     maxSize: 16,
-    wallStyle: WallStyle.GlassTower,
+    wallStyle: WallStyle.Plaster,
     interiorWallStyle: WallStyle.Plaster,
     roofStyle: 4,
     roofRise: 0,
-    segments: 4,
+    storeys: 5,
     floor: Tile.Tiles,
     minRoom: 4,
     windows: 0.8,
@@ -135,11 +127,11 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Industrial,
     minSize: 13,
     maxSize: 20,
-    wallStyle: WallStyle.Concrete,
+    wallStyle: WallStyle.Plaster,
     interiorWallStyle: WallStyle.Plaster,
     roofStyle: 5,
     roofRise: 2,
-    segments: 2,
+    storeys: 2,
     floor: Tile.Concrete,
     // Deliberately larger than any warehouse, so the interior is left open.
     minRoom: 99,
@@ -150,11 +142,11 @@ export const ARCHETYPES: readonly Archetype[] = [
     district: District.Industrial,
     minSize: 10,
     maxSize: 15,
-    wallStyle: WallStyle.Industrial,
+    wallStyle: WallStyle.Brick,
     interiorWallStyle: WallStyle.Plaster,
     roofStyle: 6,
     roofRise: 1,
-    segments: 2,
+    storeys: 2,
     floor: Tile.Concrete,
     minRoom: 8,
     windows: 0.2,
@@ -189,6 +181,7 @@ export function placeBuilding(
   id: number,
   rng: Rng,
 ): void {
+  const segments = archetype.storeys * SEGMENTS_PER_STOREY
   for (let ty = y; ty < y + h; ty++) {
     for (let tx = x; tx < x + w; tx++) {
       grid.set(tx, ty, archetype.floor)
@@ -201,7 +194,7 @@ export function placeBuilding(
       const toEdge = Math.min(tx - x, x + w - 1 - tx, ty - y, y + h - 1 - ty)
       const rise = Math.min(toEdge, archetype.roofRise)
 
-      grid.setRoof(tx, ty, archetype.roofStyle, rise, archetype.segments)
+      grid.setRoof(tx, ty, archetype.roofStyle, rise, segments)
     }
   }
 
@@ -221,21 +214,21 @@ export function placeBuilding(
       tx,
       y,
       WallSide.North,
-      door === 'north' && isDoorTile(tx, doorAt) ? Wall.None : glazed ? Wall.Window : Wall.Solid,
+      door === 'north' && isDoorTile(tx, doorAt) ? Wall.Doorway : glazed ? Wall.Window : Wall.Solid,
       wallStyle,
-      archetype.segments,
+      segments,
     )
     grid.setWall(
       tx,
       y + h,
       WallSide.North,
       door === 'south' && isDoorTile(tx, doorAt)
-        ? Wall.None
+        ? Wall.Doorway
         : rng.chance(archetype.windows)
           ? Wall.Window
           : Wall.Solid,
       wallStyle,
-      archetype.segments,
+      segments,
     )
   }
 
@@ -247,30 +240,36 @@ export function placeBuilding(
       x,
       ty,
       WallSide.West,
-      door === 'west' && isDoorTile(ty, doorAt) ? Wall.None : glazed ? Wall.Window : Wall.Solid,
+      door === 'west' && isDoorTile(ty, doorAt) ? Wall.Doorway : glazed ? Wall.Window : Wall.Solid,
       wallStyle,
-      archetype.segments,
+      segments,
     )
     grid.setWall(
       x + w,
       ty,
       WallSide.West,
       door === 'east' && isDoorTile(ty, doorAt)
-        ? Wall.None
+        ? Wall.Doorway
         : rng.chance(archetype.windows)
           ? Wall.Window
           : Wall.Solid,
       wallStyle,
-      archetype.segments,
+      segments,
     )
   }
 
   subdivide(grid, archetype, { x, y, w, h }, rng, 0)
 }
 
-/** Doorways are two tiles wide, so they can be walked through without catching. */
+/**
+ * Doorways are a single tile.
+ *
+ * Two tiles is over two metres of opening — wide enough to drive through, which is
+ * exactly how it looked. One tile is a door, and the actor's collision radius is
+ * comfortably under half a tile so it can still be walked through at any angle.
+ */
 function isDoorTile(position: number, doorStart: number): boolean {
-  return position === doorStart || position === doorStart + 1
+  return position === doorStart
 }
 
 function doorSide(grid: Grid, { x, y, w, h }: Footprint): 'north' | 'south' | 'east' | 'west' {
@@ -300,6 +299,7 @@ function subdivide(
   depth: number,
 ): void {
   const { minRoom } = archetype
+  const segments = archetype.storeys * SEGMENTS_PER_STOREY
 
   // Stop when either a further split would make a room too small, or the recursion
   // has gone deep enough that rooms would be poky regardless.
@@ -315,14 +315,14 @@ function subdivide(
     const doorAt = y + rng.int(0, h - 2)
 
     for (let ty = y; ty < y + h; ty++) {
-      const isDoor = ty === doorAt || ty === doorAt + 1
+      const isDoor = ty === doorAt
       grid.setWall(
         cut,
         ty,
         WallSide.West,
-        isDoor ? Wall.None : Wall.Solid,
+        isDoor ? Wall.Doorway : Wall.Solid,
         archetype.wallStyle,
-        archetype.segments,
+        segments,
       )
     }
 
@@ -337,14 +337,14 @@ function subdivide(
   const doorAt = x + rng.int(0, w - 2)
 
   for (let tx = x; tx < x + w; tx++) {
-    const isDoor = tx === doorAt || tx === doorAt + 1
+    const isDoor = tx === doorAt
     grid.setWall(
       tx,
       cut,
       WallSide.North,
-      isDoor ? Wall.None : Wall.Solid,
+      isDoor ? Wall.Doorway : Wall.Solid,
       archetype.interiorWallStyle,
-      archetype.segments,
+      segments,
     )
   }
 

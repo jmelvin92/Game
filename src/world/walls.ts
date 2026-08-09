@@ -25,11 +25,19 @@ export const WallSide = {
 export type WallSideId = (typeof WallSide)[keyof typeof WallSide]
 
 export const Wall = {
-  /** No wall: an open boundary, which is what a doorway is. */
+  /** No wall at all. */
   None: 0,
   Solid: 1,
-  /** Blocks movement, but not sight. */
+  /** Solid, but with glazing at the storey heights. Blocks movement, not sight. */
   Window: 2,
+  /**
+   * A doorway: wall above, open at the ground.
+   *
+   * Its own kind rather than an absent wall, because a door is only a gap at the
+   * bottom. Modelling it as no wall at all leaves a hole the full height of the
+   * building — which is exactly what it looked like.
+   */
+  Doorway: 3,
 } as const
 
 export type WallId = (typeof Wall)[keyof typeof Wall]
@@ -47,6 +55,28 @@ const DEFS: Readonly<Record<WallId, WallDef>> = {
   [Wall.None]: { name: 'none', solid: false, opaque: false },
   [Wall.Solid]: { name: 'solid', solid: true, opaque: true },
   [Wall.Window]: { name: 'window', solid: true, opaque: false },
+  [Wall.Doorway]: { name: 'doorway', solid: false, opaque: false },
+}
+
+/**
+ * How many wall segments make one storey.
+ *
+ * A segment of the art is roughly a metre, so three is about three metres — which
+ * puts a two-storey house a little over three times the height of the person
+ * standing next to it, as it should be.
+ */
+export const SEGMENTS_PER_STOREY = 3
+
+/** Whether a given course of a wall is at window height. */
+export function isWindowLevel(level: number): boolean {
+  return level % SEGMENTS_PER_STOREY === 1
+}
+
+/** Whether a given course is part of a doorway rather than the wall above it. */
+export function isDoorLevel(level: number): boolean {
+  // Two courses, so a doorway is a little over head height on a person and not
+  // large enough to drive through.
+  return level < 2
 }
 
 export function wallDef(id: WallId): WallDef {
