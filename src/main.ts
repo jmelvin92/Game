@@ -1,9 +1,11 @@
 import { createInput } from '@/core/input'
+import { createClock } from '@/core/time'
 import { startLoop } from '@/core/loop'
 import { createActor } from '@/entity/actor'
 import { moveActor } from '@/entity/movement'
 import { createCamera, followCamera } from '@/render/camera'
 import { TILE_H, TILE_W } from '@/render/iso'
+import { darknessAt, renderLighting, skyTint } from '@/render/lighting'
 import { drawHud, renderScene } from '@/render/renderer'
 import {
   Animation,
@@ -140,25 +142,62 @@ await Promise.all(
 
 const sprites = buildSprites(sheets, characterSheets)
 
+// The torch is a toggle rather than a held key: it is a thing you switch on and
+// leave on, not something you hold down while walking.
+let torchOn = true
+
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'KeyF') torchOn = !torchOn
+})
+
+// Starts at night, which is the half worth building first and the half that shows
+// whether the lighting works at all.
+const clock = createClock(22)
+
 if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
-  Object.defineProperty(window, 'game', { value: { grid, actor, camera, input } })
+  Object.defineProperty(window, 'game', { value: { grid, actor, camera, input, clock } })
 }
+
+// One scratch canvas for the lighting pass, reused every frame. Allocating one per
+// frame is the difference between the effect being free and being the most
+// expensive thing in the renderer.
+const lightBuffer = document.createElement('canvas')
 
 let elapsed = 0
 
 startLoop(
   (step) => {
     elapsed += step
+    clock.advance(step)
 
     const direction = input.direction()
     moveActor(actor, grid, direction.x, direction.y, step, input.running())
     followCamera(camera, actor.x, actor.y, step)
   },
   () => {
-    renderScene(ctx, viewWidth, viewHeight, { grid, actor, camera, sprites, time: elapsed })
-    drawHud(ctx, actor, grid)
+    const lights = renderScene(ctx, viewWidth, viewHeight, {
+      grid,
+      actor,
+      camera,
+      sprites,
+      time: elapsed,
+      dayFraction: clock.fraction,
+      torch: torchOn,
+    })
+
+    renderLighting(
+      ctx,
+      lightBuffer,
+      viewWidth,
+      viewHeight,
+      darknessAt(clock.fraction),
+      skyTint(clock.fraction),
+      lights,
+    )
+
+    drawHud(ctx, actor, grid, clock.label(), torchOn)
   },
 )

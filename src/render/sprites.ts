@@ -641,6 +641,55 @@ function drawScrub(variant: number): HTMLCanvasElement {
   return element
 }
 
+/**
+ * A street lamp: a post with a head that overhangs slightly.
+ *
+ * Drawn tall enough to read against three-storey buildings without competing with
+ * them. The lit glass is drawn bright regardless of time of day — the lighting
+ * pass darkens everything around it, so a lamp that dimmed with the rest would
+ * never look switched on.
+ */
+function drawLampPost(variant: number): HTMLCanvasElement {
+  const [element, ctx] = canvas(PROP_W, PROP_H)
+  const random = seededRandom(variant * 41 + 17)
+  const cx = PROP_ANCHOR.x
+  const groundY = PROP_ANCHOR.y
+
+  groundShadow(ctx, 9, 0.22)
+
+  const height = 96
+  const reach = 16
+
+  ctx.strokeStyle = '#31353c'
+  ctx.lineWidth = 4
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx, groundY)
+  ctx.lineTo(cx, groundY - height)
+  ctx.quadraticCurveTo(cx, groundY - height - 12, cx + reach, groundY - height - 12)
+  ctx.stroke()
+
+  // Base, so it does not look pushed into the pavement like a pin.
+  ctx.fillStyle = '#2a2e34'
+  ctx.beginPath()
+  ctx.ellipse(cx, groundY - 2, 7, 3.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Head and glass.
+  ctx.fillStyle = '#2a2e34'
+  ctx.beginPath()
+  ctx.roundRect(cx + reach - 9, groundY - height - 16, 18, 8, 2)
+  ctx.fill()
+
+  const lit = random() > 0.18
+  ctx.fillStyle = lit ? '#ffd9a0' : '#4a4f57'
+  ctx.beginPath()
+  ctx.ellipse(cx + reach, groundY - height - 7, 6.5, 3.5, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  return element
+}
+
 const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElement>> = {
   [Prop.None]: drawScrub,
   [Prop.DeadTree]: drawDeadTree,
@@ -649,6 +698,7 @@ const PROP_PAINTERS: Readonly<Record<PropId, (variant: number) => HTMLCanvasElem
   [Prop.Tree]: drawTree,
   [Prop.Sagebrush]: drawSagebrush,
   [Prop.Scrub]: drawScrub,
+  [Prop.LampPost]: drawLampPost,
 }
 
 const SKIN = '#d7a67c'

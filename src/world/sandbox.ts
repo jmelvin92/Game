@@ -125,8 +125,41 @@ export function createSandbox(seed: number = SANDBOX_SEED): Grid {
   }
 
   scatterVegetation(grid, rng)
+  placeStreetLights(grid)
 
   return grid
+}
+
+/** Tiles between lamp posts along a pavement. */
+const LAMP_SPACING = 9
+
+/**
+ * Puts lamp posts along the pavements at regular intervals.
+ *
+ * Regular on purpose — street lighting is one of the few things in a town that
+ * genuinely is evenly spaced, and the regularity reads as municipal rather than
+ * as an artefact. They go on the pavement edge furthest from the road so they do
+ * not stand in the middle of the footway.
+ */
+function placeStreetLights(grid: Grid): void {
+  for (let y = 0; y < grid.height; y++) {
+    for (let x = 0; x < grid.width; x++) {
+      if (grid.at(x, y) !== Tile.Sidewalk) continue
+      if (grid.propAt(x, y) !== Prop.None) continue
+      if ((x + y) % LAMP_SPACING !== 0) continue
+
+      // Only on the outer edge of a pavement, where it meets something that is
+      // not paved — otherwise they end up in the middle of a crossing.
+      const beside =
+        grid.at(x + 1, y) === Tile.Grass ||
+        grid.at(x - 1, y) === Tile.Grass ||
+        grid.at(x, y + 1) === Tile.Grass ||
+        grid.at(x, y - 1) === Tile.Grass
+      if (!beside) continue
+
+      grid.setProp(x, y, Prop.LampPost, 0)
+    }
+  }
 }
 
 /**

@@ -24,6 +24,8 @@ export const Prop = {
   Sagebrush: 5,
   /** Dry scrub. Walkable. */
   Scrub: 6,
+  /** Street lighting. Whether it still works is a separate question. */
+  LampPost: 7,
 } as const
 
 export type PropId = (typeof Prop)[keyof typeof Prop]
@@ -57,6 +59,30 @@ const DEFS: Readonly<Record<PropId, PropDef>> = {
   [Prop.Tree]: { name: 'tree', solid: true, opaque: true, radius: 0.22 },
   [Prop.Sagebrush]: { name: 'sagebrush', solid: false, opaque: false, radius: 0 },
   [Prop.Scrub]: { name: 'scrub', solid: false, opaque: false, radius: 0 },
+  [Prop.LampPost]: { name: 'lamp post', solid: true, opaque: false, radius: 0.12 },
+}
+
+/**
+ * How much light a prop gives off, and how far.
+ *
+ * Kept beside the prop rather than in the renderer because whether something is
+ * lit matters to the simulation — being seen at night is a game concern, not a
+ * drawing one — even though nothing reads it that way yet.
+ */
+export interface PropLight {
+  /** Radius in tiles. */
+  readonly radius: number
+  readonly strength: number
+  /** Height above the ground in tiles, so the glow sits at the lamp not its foot. */
+  readonly height: number
+}
+
+const LIGHTS: Partial<Readonly<Record<PropId, PropLight>>> = {
+  [Prop.LampPost]: { radius: 4.6, strength: 1, height: 1.6 },
+}
+
+export function propLight(id: PropId): PropLight | undefined {
+  return LIGHTS[id]
 }
 
 export function propDef(id: PropId): PropDef {

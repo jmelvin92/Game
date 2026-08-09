@@ -13,7 +13,8 @@ import {
   type Sprites,
 } from '@/render/sprites'
 import type { Grid } from '@/world/grid'
-import { Prop } from '@/world/props'
+import type { Light } from '@/render/lighting'
+import { Prop, propLight } from '@/world/props'
 import { tileDef } from '@/world/tiles'
 import { Wall, WallSide } from '@/world/walls'
 
@@ -39,6 +40,10 @@ export interface Scene {
   readonly sprites: Sprites
   /** Seconds since start, for animation. */
   readonly time: number
+  /** Fraction of the day elapsed; drives the lighting. */
+  readonly dayFraction: number
+  /** Whether the character's torch is on. */
+  readonly torch: boolean
 }
 
 interface Bounds {
@@ -153,12 +158,19 @@ function groundVariant(x: number, y: number): number {
   return (h ^ (h >>> 13)) >>> 0
 }
 
+/**
+ * Draws the world and reports the lights it found.
+ *
+ * Returning them rather than writing them into the scene keeps the one-way rule
+ * intact: the renderer reads simulation state and never writes to it. The lighting
+ * pass then runs over the finished image.
+ */
 export function renderScene(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   scene: Scene,
-): void {
+): readonly Light[] {
   const { grid, actor, camera, sprites } = scene
 
   ctx.fillStyle = BACKGROUND
@@ -321,6 +333,54 @@ export function renderScene(
     })
   }
 
+  // Lights are gathered while the scene is still in world space, then handed to
+  // the lighting pass in screen coordinates.
+  const lights: Light[] = []
+
+  for (let y = bounds.minY; y <= bounds.maxY; y++) {
+    for (let x = bounds.minX; x <= bounds.maxX; x++) {
+      const emitted = propLight(grid.propAt(x, y))
+      if (emitted === undefined) continue
+
+      const { sx, sy } = worldToScreen(x + 0.5, y + 0.5)
+      lights.push({
+        x: ox + sx,
+        y: oy + sy - emitted.height * TILE_Z,
+        radius: emitted.radius * TILE_W * 0.5,
+        strength: emitted.strength,
+        colour: 'rgba(255, 196, 118, 0.75)',
+      })
+    }
+  }
+
+  if (scene.torch) {
+    const { sx, sy } = worldToScreen(actor.x, actor.y)
+    // Point the cone the way the character faces, converted to screen space —
+    // the same projection the sprites use, so the beam and the body agree.
+    const screenDirX = actor.facingX - actor.facingY
+    const screenDirY = (actor.facingX + actor.facingY) / 2
+
+    lights.push({
+      x: ox + sx,
+      y: oy + sy - TILE_Z * 0.55,
+      radius: TILE_W * 3.4,
+      strength: 1,
+      colour: 'rgba(226, 236, 255, 0.55)',
+      direction: Math.atan2(screenDirY, screenDirX),
+      cone: Math.PI / 3.2,
+    })
+
+    // A small pool at the feet, so the character is not a silhouette behind their
+    // own torch.
+    lights.push({
+      x: ox + sx,
+      y: oy + sy - TILE_Z * 0.3,
+      radius: TILE_W * 0.85,
+      strength: 0.65,
+      colour: 'rgba(200, 214, 245, 0.5)',
+    })
+  }
+
   standing.sort((a, b) => a.sort - b.sort)
 
   for (const item of standing) {
@@ -329,10 +389,18 @@ export function renderScene(
   }
 
   ctx.globalAlpha = 1
+
+  return lights
 }
 
 /** Minimal on-screen readout. Replaced by a real HUD once there is something to report. */
-export function drawHud(ctx: CanvasRenderingContext2D, actor: Actor, grid: Grid): void {
+export function drawHud(
+  ctx: CanvasRenderingContext2D,
+  actor: Actor,
+  grid: Grid,
+  time: string,
+  torch: boolean,
+): void {
   const tileX = Math.floor(actor.x)
   const tileY = Math.floor(actor.y)
   const standingOn = grid.contains(tileX, tileY) ? tileDef(grid.at(tileX, tileY)).name : 'void'
@@ -341,12 +409,12 @@ export function drawHud(ctx: CanvasRenderingContext2D, actor: Actor, grid: Grid)
   ctx.textBaseline = 'top'
 
   const lines = [
-    'WASD or arrows to walk  ·  hold shift to run',
-    `${String(tileX)}, ${String(tileY)}  ·  ${standingOn}`,
+    'WASD or arrows to walk  ·  shift to run  ·  F for torch',
+    `${time}  ·  ${String(tileX)}, ${String(tileY)}  ·  ${standingOn}${torch ? '  ·  torch on' : ''}`,
   ]
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-  ctx.fillRect(10, 10, 210, 8 + lines.length * 16)
+  ctx.fillRect(10, 10, 330, 8 + lines.length * 16)
 
   ctx.fillStyle = '#d6d9de'
   lines.forEach((line, i) => {
