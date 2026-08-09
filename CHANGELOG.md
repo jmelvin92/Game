@@ -29,6 +29,17 @@ verifiably correct and mistakes are cheap to undo.
 - Git hooks (`commit-msg`, `pre-push`) as plain shell in `.githooks/`, adding no dependencies.
   Commit messages are validated; typecheck, lint, and tests run before every push; direct pushes to
   `main` are refused.
+- GitHub Actions CI mirroring the pre-push checks, so a clean local push means a green pull request
+  and the gates still hold if the hooks are bypassed.
+
+### Notes
+
+- Every gate was verified against cases designed to defeat it rather than assumed to work: the layer
+  rule rejects both alias and relative-path escapes while allowing legal downward imports, the commit
+  hook was exercised against 17 messages, and a deliberately broken build was confirmed to fail both
+  the hook and CI.
+- Branch protection on `main` is not active. GitHub restricts it to public repositories and paid
+  plans, so the `pre-push` hook is currently the only thing refusing direct pushes.
 
 [Unreleased]: https://github.com/jmelvin92/Game/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/jmelvin92/Game/releases/tag/v0.1.0
