@@ -27,7 +27,7 @@ import {
   WALL_W,
   type AnimationId,
 } from '@/render/sprites'
-import { loadSpriteGrid, loadTileSheets } from '@/render/textures'
+import { loadObjects, loadSpriteGrid, loadTileSheets } from '@/render/textures'
 import { createSandbox, SANDBOX_SEED, SPAWN } from '@/world/sandbox'
 import { deviceDef, LampCondition, nearestDevice, Prop } from '@/world/props'
 import { tileDef } from '@/world/tiles'
@@ -148,7 +148,48 @@ const input = createInput()
 
 // Textures must be decoded and keyed before the first frame, so the world never
 // flashes untextured. Sheets load concurrently; this is a few hundred milliseconds.
-const [groundSheets, wallSheets] = await Promise.all([
+// The Kenney miniature packs: whole-frame objects with real alpha, halved at
+// load to sit on our 128x64 grid. Each name maps straight onto what the sprite
+// builder looks up, so adding a piece is adding a line.
+const KENNEY = Object.fromEntries(
+  [
+    'woodWall_E',
+    'woodWall_S',
+    'woodWallWindowGlass_E',
+    'woodWallWindowGlass_S',
+    'woodWallDoorway_E',
+    'woodWallDoorway_S',
+    'roof_N',
+    'roof_E',
+    'roof_S',
+    'roof_W',
+    'roofCorner_N',
+    'roofCorner_E',
+    'roofCorner_S',
+    'roofCorner_W',
+    'roofSingle_N',
+    'roofSingle_E',
+
+    'bookcaseBooks_N',
+    'bookcaseBooks_E',
+    'bookcaseBooks_S',
+    'bookcaseBooks_W',
+    'libraryChair_N',
+    'libraryChair_E',
+    'libraryChair_S',
+    'libraryChair_W',
+    'longTable_E',
+    'longTable_S',
+    'displayCase_E',
+    'displayCase_S',
+  ].map((name) => [name, `/kenney/${name}.png`]),
+)
+
+// The floors drop their direction suffix: a floor has no facing worth naming.
+KENNEY.planks = '/kenney/planks_N.png'
+KENNEY.planksOld = '/kenney/planksOld_N.png'
+
+const [groundSheets, wallSheets, objects] = await Promise.all([
   loadTileSheets(
     {
       grass: '/tiles/grass.png',
@@ -187,6 +228,7 @@ const [groundSheets, wallSheets] = await Promise.all([
     WALL_W,
     WALL_H,
   ),
+  loadObjects(KENNEY, 0.5),
 ])
 
 const sheets = new Map([...groundSheets, ...wallSheets])
@@ -230,7 +272,7 @@ await Promise.all(
   }),
 )
 
-const sprites = buildSprites(sheets, characterSheets)
+const sprites = buildSprites(sheets, characterSheets, objects)
 
 // The torch is a toggle rather than a held key: it is a thing you switch on and
 // leave on, not something you hold down while walking.
@@ -371,8 +413,12 @@ if (import.meta.env.DEV) {
   // Exposed so the running game can be inspected and driven from the browser
   // console during development — which is how changes get verified here, since
   // Joshua does not debug. Stripped from production builds by the `DEV` guard.
+  // configurable, because dev tooling can evaluate this module twice in one
+  // page (dependency re-optimisation) and a frozen property makes the second
+  // evaluation die here with half a game booted.
   Object.defineProperty(window, 'game', {
     value: { grid, actor, camera, input, clock, vitals, hunters, inventory, sunAt, grade },
+    configurable: true,
   })
 }
 

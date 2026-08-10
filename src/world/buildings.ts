@@ -78,7 +78,21 @@ export const WallStyle = {
    * surface; a smooth painted course is easy to draw and reads as home.
    */
   Painted: 10,
+  /**
+   * Kenney farm-pack timber, one full storey of art per course. Unlike every
+   * style above, its sprites are whole 128x256 tile frames: windows and
+   * doorways are their own drawings with the opening in the art, and a wall
+   * using it should be one segment tall — the frame is the storey.
+   */
+  Timber: 11,
 } as const
+
+/**
+ * Roof style drawn from directional pieces — slopes, corners, ridge caps —
+ * rather than painted slabs. A plain number like the wall styles, because
+ * world/ must not know what a roof looks like; the renderer gives it meaning.
+ */
+export const ROOF_PIECED = 9
 
 export const ARCHETYPES: readonly Archetype[] = [
   {

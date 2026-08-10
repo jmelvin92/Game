@@ -239,6 +239,15 @@ GitHub is the backup, and every commit is a restore point.
 
 ## 7. Where the project stands
 
+**Art is mid-migration to Kenney's isometric miniature packs** (farm + library, CC0, in
+`public/kenney/`, chosen by Joshua). The house uses them: timber walls one full storey of art per
+course (`WallStyle.Timber`, segments=1, openings drawn in the art), Kenney plank floors, and a
+flat plank deck roof (`ROOF_PIECED`) — flat because the pack's pitched pieces are whole gable
+prisms sized for buildings a few tiles deep, which cannot span a 12×9 footprint. If pitched roofs
+matter, the houses must shrink toward pack proportions; that is Joshua's call. Bookcase, chairs,
+tables and display case come from the packs; furniture with no pack equivalent (bed, sofa,
+wardrobe, bathroom and kitchen fixtures, TV, lamps) stays code-drawn.
+
 **There is a workshop block.** One city block, 80×80: two streets, six copies of the hand-built
 house from `src/world/house.ts`, five lamp posts, nothing else. This is deliberate scope, not lost
 progress — the 1024×1024 biome island with city, farms and airfields lives in git history

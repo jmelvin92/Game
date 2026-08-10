@@ -1,8 +1,8 @@
-import { WallStyle } from '@/world/buildings'
+import { ROOF_PIECED, WallStyle } from '@/world/buildings'
 import type { Grid } from '@/world/grid'
 import { Prop, type PropId } from '@/world/props'
 import { Tile, type TileId } from '@/world/tiles'
-import { SEGMENTS_PER_STOREY, Wall, WallSide, type WallId } from '@/world/walls'
+import { Wall, WallSide, type WallId } from '@/world/walls'
 
 /**
  * The house: one home, laid out by hand.
@@ -36,11 +36,14 @@ import { SEGMENTS_PER_STOREY, Wall, WallSide, type WallId } from '@/world/walls'
 export const HOUSE_W = 12
 export const HOUSE_H = 9
 
-/** One storey of wall. */
-const SEGMENTS = SEGMENTS_PER_STOREY
+/**
+ * One course of wall — the timber style's frames are a whole storey of art
+ * each, so a single-storey house is a single segment.
+ */
+const SEGMENTS = 1
 
-const EXTERIOR = WallStyle.Wood
-const INTERIOR = WallStyle.Painted
+const EXTERIOR = WallStyle.Timber
+const INTERIOR = WallStyle.Timber
 
 interface WallRun {
   readonly x: number
@@ -91,8 +94,9 @@ interface Placement {
   readonly x: number
   readonly y: number
   readonly prop: PropId
-  /** 0 lies along x on screen, 1 along y. */
-  readonly facing: 0 | 1
+  /** 0 fronts down-left (+y), 1 down-right (+x); 2 and 3 are the backs.
+      Code-drawn pieces read it modulo 2. */
+  readonly facing: 0 | 1 | 2 | 3
 }
 
 /**
@@ -120,14 +124,15 @@ const FURNITURE: readonly Placement[] = [
   { x: 4, y: 6, prop: Prop.Counter, facing: 0 },
   { x: 2, y: 8, prop: Prop.KitchenTable, facing: 0 },
   { x: 1, y: 8, prop: Prop.Chair, facing: 1 },
-  { x: 3, y: 8, prop: Prop.Chair, facing: 1 },
+  { x: 3, y: 8, prop: Prop.Chair, facing: 3 },
 
-  // Living room: the sofa faces the television across the coffee table.
+  // Living room: sofa, case and television in one line down the east side, so
+  // the seating faces the set and the route from the front door stays clear.
   { x: 7, y: 0, prop: Prop.Bookshelf, facing: 0 },
-  { x: 8, y: 2, prop: Prop.Sofa, facing: 0 },
-  { x: 9, y: 3, prop: Prop.CoffeeTable, facing: 0 },
-  { x: 10, y: 4, prop: Prop.Television, facing: 1 },
-  { x: 11, y: 6, prop: Prop.FloorLamp, facing: 0 },
+  { x: 10, y: 1, prop: Prop.Sofa, facing: 0 },
+  { x: 10, y: 3, prop: Prop.CoffeeTable, facing: 0 },
+  { x: 10, y: 5, prop: Prop.Television, facing: 2 },
+  { x: 11, y: 7, prop: Prop.FloorLamp, facing: 0 },
 ]
 
 /** Which rooms get boards and which get tiles. */
@@ -138,9 +143,7 @@ function floorAt(localX: number, localY: number): TileId {
   return Tile.Floorboards
 }
 
-/** How far the pitched roof climbs before flattening. */
-const ROOF_RISE = 3
-const ROOF_STYLE = 1
+const ROOF_STYLE = ROOF_PIECED
 
 /**
  * Stamps the house at (originX, originY), owning building id `id`.
@@ -163,8 +166,11 @@ export function buildHouse(grid: Grid, originX: number, originY: number, id: num
       if (lx > 0) grid.setWall(x, y, WallSide.West, Wall.None)
       if (ly > 0) grid.setWall(x, y, WallSide.North, Wall.None)
 
+      // A full hip: rise climbs to the ridge uncapped, so there is no flat
+      // plateau — the pieced roof has slopes, corners and ridge caps, but
+      // nothing to put on a flat top.
       const toEdge = Math.min(lx, HOUSE_W - 1 - lx, ly, HOUSE_H - 1 - ly)
-      grid.setRoof(x, y, ROOF_STYLE, Math.min(toEdge, ROOF_RISE), SEGMENTS)
+      grid.setRoof(x, y, ROOF_STYLE, toEdge, SEGMENTS)
     }
   }
 

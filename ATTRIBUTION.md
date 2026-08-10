@@ -26,6 +26,20 @@ packs, teal in others — which `src/render/textures.ts` keys out at load. It de
 the colour from each sheet's border rather than assuming, because the packs
 disagree.
 
+## Kenney isometric miniature packs — CC0
+
+**[Kenney](https://kenney.nl)**, public domain, commercial use permitted, no
+attribution required. Credited here anyway. `public/kenney/`, a subset of:
+
+- **Isometric Miniature Farm** — timber walls with window/door variants, plank
+  floors, roof pieces
+- **Isometric Miniature Library** — bookcases, tables, chairs, display cases
+
+256x512 frames with real alpha, scaled to 50% at load to sit on the 128x64
+grid. The farm pack's pitched-roof pieces are whole gable prisms sized for
+buildings a few tiles deep; on the wide house they misassemble, so the house
+carries a flat plank deck instead — see the commit that added them.
+
 ## Character and creature sprites — generated
 
 Made by Joshua with **[AutoSprite.AI](https://autosprite.ai)**.

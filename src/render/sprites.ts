@@ -1,7 +1,7 @@
 import { TILE_H, TILE_W } from '@/render/iso'
 import type { TileSheet } from '@/render/textures'
 import { Tile, type TileId } from '@/world/tiles'
-import { WallStyle } from '@/world/buildings'
+import { ROOF_PIECED, WallStyle } from '@/world/buildings'
 import { LampCondition, Prop, PROP_VARIANTS, type PropId } from '@/world/props'
 import { Wall, WallSide, type WallId, type WallSideId } from '@/world/walls'
 
@@ -90,6 +90,12 @@ export const CHARACTER_SCALE = 1
  */
 export const SHEET_ROW_FOR_FACING: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 7]
 
+/** Roof pieces for the Kenney roof, keyed by shape and orientation. */
+export type RoofPieces = ReadonlyMap<string, HTMLCanvasElement>
+
+/** Roof style id that draws from pieces rather than painted slabs. */
+export const KENNEY_ROOF = ROOF_PIECED
+
 export interface Sprites {
   /**
    * Ground tiles, indexed by tile id. Several variants per surface: a field of
@@ -97,6 +103,7 @@ export interface Sprites {
    * that was doing more damage to the look of the world than the textures were.
    */
   readonly ground: ReadonlyMap<TileId, readonly HTMLCanvasElement[]>
+  readonly roofPieces: RoofPieces
   /** Wall segments, keyed by {@link wallSpriteKey}. */
   readonly walls: ReadonlyMap<string, HTMLCanvasElement>
   /** Roof tiles, indexed by roof style. */
@@ -1702,6 +1709,7 @@ export type CharacterSheets = ReadonlyMap<AnimationId, readonly (readonly HTMLCa
 export function buildSprites(
   sheets: ReadonlyMap<string, TileSheet>,
   loaded?: ReadonlyMap<string, CharacterSheets>,
+  objects?: ReadonlyMap<string, HTMLCanvasElement>,
 ): Sprites {
   const ground = new Map<TileId, readonly HTMLCanvasElement[]>()
 
@@ -1720,6 +1728,30 @@ export function buildSprites(
   }
 
   ground.set(Tile.Road, [0, 1, 2, 3].map(drawAsphalt))
+
+  // Kenney floors, when present: the frame is 128x256 with the floor at the
+  // bottom, so it is cropped to the diamond plus its thickness skirt. The
+  // renderer bottom-aligns ground sprites, so the extra height just works.
+  const kenneyFloor = (name: string): HTMLCanvasElement | undefined => {
+    const frame = objects?.get(name)
+    if (frame === undefined) return undefined
+    const [element, ctx] = canvas(frame.width, 70)
+    ctx.drawImage(frame, 0, frame.height - 70 - 6, frame.width, 70, 0, 0, frame.width, 70)
+    return element
+  }
+  const planks = kenneyFloor('planks')
+  const planksOld = kenneyFloor('planksOld')
+  if (planks !== undefined && planksOld !== undefined) {
+    ground.set(Tile.Floorboards, [planks, planks, planksOld])
+    ground.set(Tile.Tiles, [planksOld, planks, planksOld])
+  }
+
+  // The flat plank roof. The pack's prism roof pieces are complete gable
+  // cross-sections for buildings a few tiles deep — Kenney's own sample never
+  // spans more than four — and tiling them over a nine-deep footprint stacks
+  // prisms into nonsense. A raised plank deck is squarely in the pack's own
+  // vocabulary, and it tiles to any size.
+  const flatRoof = kenneyFloor('planksOld')
   ground.set(Tile.Water, [0, 1, 2, 3].map(drawWater))
   ground.set(Tile.Soil, [0, 1, 2].map(drawSoil))
 
@@ -1800,6 +1832,47 @@ export function buildSprites(
     walls.set(wallSpriteKey(Wall.Window, side, WallStyle.Painted), painted)
   }
 
+  // Timber walls: whole Kenney frames, one storey of art per course, with
+  // window and doorway variants that carry their opening in the drawing.
+  if (objects !== undefined) {
+    const timber: readonly (readonly [WallId, string])[] = [
+      [Wall.Solid, 'woodWall'],
+      [Wall.Window, 'woodWallWindowGlass'],
+      [Wall.Doorway, 'woodWallDoorway'],
+    ]
+    for (const [kind, base] of timber) {
+      const west = objects.get(`${base}_E`)
+      const north = objects.get(`${base}_S`)
+      if (west !== undefined) walls.set(wallSpriteKey(kind, WallSide.West, WallStyle.Timber), west)
+      if (north !== undefined)
+        walls.set(wallSpriteKey(kind, WallSide.North, WallStyle.Timber), north)
+    }
+  }
+
+  // Roof pieces, keyed by what the tile's neighbourhood needs: a slope facing
+  // its downhill direction, a corner for two adjacent downhills, a ridge cap
+  // along an axis. Orientation mapping was measured off the art's alpha.
+  const roofPieces = new Map<string, HTMLCanvasElement>()
+  if (objects !== undefined) {
+    const pieces: readonly (readonly [string, string])[] = [
+      ['slope:+x', 'roof_N'],
+      ['slope:+y', 'roof_E'],
+      ['slope:-x', 'roof_S'],
+      ['slope:-y', 'roof_W'],
+      ['corner:+x+y', 'roofCorner_N'],
+      ['corner:+y-x', 'roofCorner_E'],
+      ['corner:-x-y', 'roofCorner_S'],
+      ['corner:-y+x', 'roofCorner_W'],
+      ['ridge:x', 'roofSingle_N'],
+      ['ridge:y', 'roofSingle_E'],
+    ]
+    for (const [key, name] of pieces) {
+      const sprite = objects.get(name)
+      if (sprite !== undefined) roofPieces.set(key, sprite)
+    }
+    if (flatRoof !== undefined) roofPieces.set('flat', flatRoof)
+  }
+
   const roofs = ROOF_COLOURS.map((colour) => drawRoof(colour))
   const props = new Map<PropId, readonly HTMLCanvasElement[]>()
   for (const [id, paint] of Object.entries(PROP_PAINTERS)) {
@@ -1809,6 +1882,26 @@ export function buildSprites(
       species,
       Array.from({ length: PROP_VARIANTS }, (_, variant) => paint(variant)),
     )
+  }
+
+  // Furniture with real art replaces its code-drawn painter. Variant order is
+  // facing: 0 fronts down-left (+y), 1 down-right (+x), 2 and 3 the backs.
+  if (objects !== undefined) {
+    const overrides: readonly (readonly [PropId, readonly string[]])[] = [
+      [
+        Prop.Bookshelf,
+        ['bookcaseBooks_S', 'bookcaseBooks_E', 'bookcaseBooks_N', 'bookcaseBooks_W'],
+      ],
+      [Prop.Chair, ['libraryChair_S', 'libraryChair_E', 'libraryChair_N', 'libraryChair_W']],
+      [Prop.KitchenTable, ['longTable_S', 'longTable_E']],
+      [Prop.CoffeeTable, ['displayCase_S', 'displayCase_E']],
+    ]
+    for (const [id, names] of overrides) {
+      const frames = names
+        .map((name) => objects.get(name))
+        .filter((c): c is HTMLCanvasElement => c !== undefined)
+      if (frames.length > 0) props.set(id, frames)
+    }
   }
 
   // One set of frames per animation per facing, per character. Anything without
@@ -1858,5 +1951,5 @@ export function buildSprites(
     characters.set(name, character)
   }
 
-  return { ground, walls, roofs, props, characters }
+  return { ground, walls, roofs, roofPieces, props, characters }
 }

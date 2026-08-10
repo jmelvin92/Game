@@ -8,6 +8,7 @@ import {
   Animation,
   ANIMATIONS,
   facingIndex,
+  KENNEY_ROOF,
   ROOF_STEP,
   WALL_H,
   WALL_W,
@@ -30,6 +31,9 @@ import { isDoorLevel, isWindowLevel, Wall, WallSide } from '@/world/walls'
 const BACKGROUND = '#1b1d21'
 
 /** Extra tiles drawn beyond the viewport edge, so tall sprites do not pop in. */
+/** Screen height of a Kenney timber wall's visible top above its base. */
+const KENNEY_WALL_TOP = 140
+
 const CULL_PADDING = 3
 
 /** Blank pixels below the character's feet in their sprite frame. */
@@ -238,7 +242,15 @@ export function renderScene(
       if (sprite === undefined) continue
 
       const { sx, sy } = worldToScreen(x, y)
-      ctx.drawImage(sprite, Math.round(ox + sx - TILE_W / 2), Math.round(oy + sy))
+      // Bottom-aligned: sprites taller than a tile (Kenney floors carry a
+      // thickness skirt) hang the extra below their row, where the next row
+      // paints over it — except at exposed edges, where the skirt becomes
+      // the floor's visible thickness.
+      ctx.drawImage(
+        sprite,
+        Math.round(ox + sx - TILE_W / 2),
+        Math.round(oy + sy - (sprite.height - TILE_H)),
+      )
     }
   }
 
@@ -334,7 +346,10 @@ export function renderScene(
         const style = grid.wallStyleAt(x, y, side)
         const solid = sprites.walls.get(wallSpriteKey(Wall.Solid, side, style))
         const glazed = sprites.walls.get(wallSpriteKey(Wall.Window, side, style))
-        if (solid === undefined) continue
+        // Styles with per-kind drawings (Kenney frames carry the opening in
+        // the art) match the boundary's own kind directly.
+        const exact = sprites.walls.get(wallSpriteKey(wall, side, style))
+        if (solid === undefined && exact === undefined) continue
 
         // A west wall runs down-left from the tile's top vertex, so it occupies the
         // half-diamond to the left; a north wall runs down-right, occupying the
@@ -362,10 +377,24 @@ export function renderScene(
           // things at once: a doorway is now an opening at the bottom with wall
           // above it rather than a slot the full height of the building, and
           // glazing lands at storey heights instead of on every course.
-          if (wall === Wall.Doorway && isDoorLevel(level)) continue
+          //
+          // Styles with exact-kind art skip all of that: the opening is in the
+          // drawing, so every course draws and the kind picks the frame.
+          if (exact === undefined && wall === Wall.Doorway && isDoorLevel(level)) continue
 
           const sprite =
-            wall === Wall.Window && isWindowLevel(level) && glazed !== undefined ? glazed : solid
+            exact ??
+            (wall === Wall.Window && isWindowLevel(level) && glazed !== undefined ? glazed : solid)
+          if (sprite === undefined) continue
+
+          // Frames taller than a course are whole-tile drawings (128x256 with
+          // the tile's bottom corner 6px above the frame base) and anchor by
+          // that convention; course-sized sprites keep the classic stack.
+          const tall = sprite.height > WALL_H
+          const drawX = tall ? sx - TILE_W / 2 : left
+          const drawY = tall
+            ? sy + TILE_H + 6 - sprite.height - level * TILE_Z
+            : sy - WALL_H + TILE_H / 2 - level * TILE_Z
 
           standing.push({
             // Walls sit on a tile's far boundaries, so they draw fractionally
@@ -374,8 +403,8 @@ export function renderScene(
             // Higher courses draw after lower ones.
             sort: depth(x, y) - 0.5 + level * 0.001,
             sprite,
-            x: Math.round(ox + left),
-            y: Math.round(oy + sy - WALL_H + TILE_H / 2 - level * TILE_Z),
+            x: Math.round(ox + drawX),
+            y: Math.round(oy + drawY),
             alpha,
             shade: backlit ? scene.sun.backlitShade : 0,
           })
@@ -423,10 +452,32 @@ export function renderScene(
       if (style === 0) continue
       if (occupied !== 0 && grid.buildingAt(x, y) === occupied) continue
 
+      const { sx, sy } = worldToScreen(x, y)
+
+      if (style === KENNEY_ROOF) {
+        // A flat plank deck at wall-top height. The pack's pitched pieces are
+        // whole gable prisms for buildings a few tiles deep — Kenney's own
+        // sample never spans more than four — and tiling them across a wide
+        // footprint stacks prisms into nonsense. In this vocabulary the honest
+        // roof for a broad house is a deck, thickness skirt and all.
+        const piece = sprites.roofPieces.get('flat')
+        if (piece === undefined) continue
+
+        const lift = grid.roofBaseAt(x, y) * KENNEY_WALL_TOP
+
+        standing.push({
+          sort: depth(x, y) + 0.25,
+          sprite: piece,
+          x: Math.round(ox + sx - TILE_W / 2),
+          y: Math.round(oy + sy - (piece.height - TILE_H) - lift),
+          alpha: 1,
+        })
+        continue
+      }
+
       const sprite = sprites.roofs[style]
       if (sprite === undefined) continue
 
-      const { sx, sy } = worldToScreen(x, y)
       // Roofs cap the walls, so they sit at the building's full wall height, plus
       // however far this part of the hip has climbed toward the ridge.
       const rise = grid.roofHeightAt(x, y) * ROOF_STEP + grid.roofBaseAt(x, y) * TILE_Z

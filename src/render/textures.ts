@@ -235,3 +235,45 @@ export async function loadSpriteGrid(
 
   return grid
 }
+
+/**
+ * Loads standalone object sprites — one PNG per object, real alpha channel, no
+ * keying — scaled down at load so nothing downstream deals in two scales.
+ *
+ * The Kenney isometric packs ship 256x512 frames against our 128x64 tiles, so
+ * everything halves: one draw onto a canvas at load, and the renderer never
+ * knows the art was ever bigger.
+ */
+export async function loadObjects(
+  sources: Readonly<Record<string, string>>,
+  scale: number,
+): Promise<Map<string, HTMLCanvasElement>> {
+  const objects = new Map<string, HTMLCanvasElement>()
+
+  await Promise.all(
+    Object.entries(sources).map(async ([name, url]) => {
+      const image = new Image()
+      image.src = url
+      try {
+        await image.decode()
+      } catch {
+        // A missing object degrades to whatever the code-drawn fallback is;
+        // the caller treats absence as "keep the placeholder".
+        return
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(image.naturalWidth * scale)
+      canvas.height = Math.round(image.naturalHeight * scale)
+      const ctx = canvas.getContext('2d')
+      if (ctx === null) return
+
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+      objects.set(name, canvas)
+    }),
+  )
+
+  return objects
+}
